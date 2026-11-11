@@ -1,5 +1,7 @@
 # System Architecture Proposal — Phase 2
 
+> **Note added in Phase 12.** This is the approved design baseline, written before implementation. It describes intent. For the behaviour of the code as it is now, see [credential-lifecycle.md](credential-lifecycle.md), [api-documentation.md](api-documentation.md), [database/database-schema.md](database/database-schema.md) and [security.md](security.md).
+
 **Status: APPROVED IMPLEMENTATION BASELINE (2026-11-11).** The user directed the project to use this architecture and the original problem statement as the source of truth. This approval does not settle every business/security choice in Section 11; time-boxed defaults are recorded separately as implementation assumptions in [DECISIONS.md](DECISIONS.md), not as user approvals.
 
 ## 1. Architecture overview
@@ -514,9 +516,9 @@ sequenceDiagram
     API->>Auth: Authenticate and authorize request
     Auth-->>API: Principal and decision
     API->>Issue: Issue from eligibility decision
-    Issue->>DB: Begin transaction; lock/read decision and issuer
+    Issue->>DB: Begin transaction, lock/read decision and issuer
     DB-->>Issue: Passing decision and applicable versions
-    Issue->>Sign: Canonicalize payload; hash and sign
+    Issue->>Sign: Canonicalize payload, hash and sign
     Sign-->>Issue: Digest, signature, key ID
     Issue->>DB: Insert unique credential and audit event
     DB-->>Issue: Commit or uniqueness conflict
@@ -556,7 +558,7 @@ sequenceDiagram
     end
     Verify->>DB: Persist request outcome and audit event
     Verify-->>API: Separate integrity, issuer-trust and lifecycle results
-    API-->>Verifier: Explicit result; indeterminate never maps to active
+    API-->>Verifier: Explicit result, indeterminate never maps to active
 ```
 
 ### 9.4 Revocation sequence
@@ -572,10 +574,10 @@ sequenceDiagram
     API->>Auth: Authenticate and authorize
     Auth-->>API: Principal and scope decision
     API->>Revoke: Revoke credential with reason/effective time
-    Revoke->>DB: Begin transaction; lock credential
+    Revoke->>DB: Begin transaction, lock credential
     DB-->>Revoke: Current credential state
     Revoke->>Revoke: Validate permitted transition
-    Revoke->>DB: Insert revocation and audit; update/derive status
+    Revoke->>DB: Insert revocation and audit, update/derive status
     DB-->>Revoke: Commit or conflict
     Revoke-->>API: Revoked, already revoked, or failure
     API-->>Admin: Explicit outcome

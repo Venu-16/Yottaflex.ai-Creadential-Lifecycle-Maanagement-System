@@ -1,5 +1,7 @@
 # Development Progress and 11-Phase Roadmap
 
+> **Note added in Phase 12.** This roadmap was last updated by the project author before Phase 10.2 and is kept as a historical record. Its test counts (30 tests, 34 paths) are out of date: the current figures are 122 tests and 40 paths with 48 operations. Its phase numbers differ from the later work plan, in which Phase 10.2 is the backend fixes, Phase 11 is full seed dataset validation (still open) and Phase 12 is documentation. Current status is in [AI_HANDOVER.md](../AI_HANDOVER.md#status-snapshot).
+
 The original hackathon problem statement at [original-problem-statement.md](original-problem-statement.md) is the source of truth. This checklist tracks product work, not merely folder creation. Mark a phase complete only when its work and stated checks are implemented and verified. Do not mark a mandatory acceptance criterion out of scope without explicit user approval and a documented trade-off.
 
 ## Status summary

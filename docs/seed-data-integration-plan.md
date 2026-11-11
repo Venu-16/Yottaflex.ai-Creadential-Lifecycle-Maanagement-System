@@ -1,5 +1,7 @@
 # Full Seed Data Integration Plan
 
+> **Note added in Phase 12.** This is the project author's plan for importing the full dataset and is kept as a historical record. Full seed dataset validation is still open; see [known-issues.md](known-issues.md#seed-data-and-full-dataset-tools).
+
 ## Scope and safety
 
 This plan describes a read-only inspection and a proposed import/analytics

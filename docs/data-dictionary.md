@@ -1,5 +1,8 @@
-# Data Dictionary Index
+# Data Dictionary
 
-The logical data dictionary is at [database/data-dictionary.md](database/data-dictionary.md), alongside the [entity catalogue](database/entity-catalogue.md) and [relationship specification](database/relationship-specification.md). The MVP schema is implemented in SQLAlchemy and its initial migration is `af6e5dad6637`.
+This page is an index.
 
-The dictionary describes the intended PostgreSQL fields and constraints. Time-boxed assumptions are recorded separately from user approvals in [DECISIONS.md](DECISIONS.md). The model/migration implementation is initial and has not yet been applied to any persistent project database.
+- The columns as implemented, with types, nullability, defaults and constraints: [database/database-schema.md](database/database-schema.md).
+- The logical data dictionary written during design: [database/data-dictionary.md](database/data-dictionary.md).
+
+Where the two differ, `database-schema.md` is correct, because it was read from the migrated PostgreSQL database.

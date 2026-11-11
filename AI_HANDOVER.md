@@ -15,16 +15,16 @@ The original problem statement is the source of truth. Do not remove, weaken, si
 ## Handover snapshot
 
 - **Verified roadmap phases:** Phase 1 — project foundation; Phase 2 — approved architecture baseline; Phase 10 — synthetic data, quality, ground truth, and reproducibility.
-- **Current product phase:** Phase 4 — the initial database model and migration exist; application workflows are not implemented. The task-level Phase 5 seed-data increment maps to roadmap Phase 10 and is complete.
-- **Current task:** The seed-data generation, validation, and two-run reproducibility checks are complete. Roadmap Phase 5 (eligibility-rule definition) remains pending.
-- **Implementation state:** FastAPI health endpoint and minimal frontend remain. SQLAlchemy has 23 MVP tables in `backend/app/models/domain.py`; initial Alembic revision is `backend/migrations/versions/af6e5dad6637_create_credential_domain_schema.py`. Seed generation, validation, ground-truth, and anomaly fixtures exist. No business APIs, auth flow, credential service, or production signing-key custody exists.
-- **Next step:** Continue remaining product work without treating synthetic fixture assumptions as approved policy. Keep authorization deny-by-default. Do not mark Phase 4 complete.
+- **Current product phase:** Phase 6 — backend business logic and REST API. The initial workflow APIs exist, but Phases 3–9 remain unchecked and incomplete.
+- **Current task:** Phase 6.5 backend testing and hardening pass. The current backend suite passes against a separate, disposable PostgreSQL 17 database; unresolved hardening and product gaps are documented.
+- **Implementation state:** FastAPI exposes auth/RBAC, master-data, enrollment/completion/assessment, eligibility, credential issuance, verification, revocation, audit, and reporting routes. SQLAlchemy has 23 MVP tables in `backend/app/models/domain.py`; no migration was added for this task. Seed generation/validation/reproducibility remains complete. Test-only signing material is never reused in the API.
+- **Next step:** Continue remaining lifecycle/security acceptance work before production exposure. Remaining items include an approved actor matrix, object-level scopes, account lifecycle, rate/body-size controls, production key custody, replacement issuance, and database-outage fault injection. Do not mark Phase 3–9 complete or claim production security sign-off.
 
 ## Repository facts
 
-- Backend: FastAPI under `backend/app/`; settings in `app/core/config.py`; database engine/session in `app/database/connection.py`; SQLAlchemy domain metadata in `app/models/domain.py`; only `GET /health` is registered.
+- Backend: FastAPI under `backend/app/`; settings in `app/core/config.py`; SQLAlchemy session dependency in `app/database/dependencies.py`; bearer auth/RBAC in `app/core/`; lifecycle services under `app/services/`; OpenAPI request/response models in `app/schemas/api.py`.
 - Alembic uses `backend/migrations/`; revision `af6e5dad6637` creates 23 MVP tables.
-- Backend tests include `backend/tests/test_health.py`, schema checks, and deterministic data/anomaly fixture checks; integration and e2e folders otherwise remain placeholders.
+- Backend tests include health, schema, synthetic-data, security unit tests, and PostgreSQL API integration coverage in `backend/tests/integration/test_api_workflows.py` (requires a dedicated empty `API_TEST_DATABASE_URL` with `test` in its database name). See `docs/backend-testing.md`.
 - Frontend: Vite React app in `frontend/src/`; `App.jsx` is a minimal status page; `services/api.js` is only an Axios configuration.
 - Data: the full synthetic profile is in `data/generated/`; separate ground-truth and anomaly files are in `data/ground_truth/`; validation reports are in `data/validation/`. The detailed runbook is `docs/database/seed-data-guide.md`.
 - Docker Compose defines `db`, `backend`, and `frontend`, uses a PostgreSQL health check and named volume. It has been built and tested locally.
@@ -34,11 +34,13 @@ The original problem statement is the source of truth. Do not remove, weaken, si
 
 ## Verified baseline and caveats
 
-During initialization: backend health test, Python compile check, frontend production build, local health/page checks, and Compose validation passed. For schema work, `pytest` passed, compileall passed, Alembic reported no metadata drift, and a disposable PostgreSQL 17 instance passed migration upgrade/downgrade/re-upgrade plus duplicate award-slot and credential-ID rejection checks. Two clean full-profile seed-data generations passed PostgreSQL/data validation at all required volumes, including referential integrity, source-derived eligibility, SHA-256/Ed25519 verification, ground-truth checks, and an isolated duplicate-ID savepoint probe. The reproducibility report records identical manifests and validation results.
+During initialization: backend health test, Python compile check, frontend production build, local health/page checks, and Compose validation passed. For schema work, pytest passed, compileall passed, Alembic reported no metadata drift, and disposable PostgreSQL checks passed. Two clean full-profile seed-data generations passed PostgreSQL/data validation at all required volumes. In the Phase 6.5 pass, `python -m pytest -q` passed **27 tests** (6 PostgreSQL integration, 13 auth/crypto unit, 3 schema, 4 seed-data, 1 health) against a newly created PostgreSQL 17 container with a tmpfs database. Compileall passed; OpenAPI generated **34 paths** including HTTP bearer auth; Alembic upgrade/check reported no metadata drift; Compose configuration and `git diff --check` passed. The test container was separate from the synthetic dataset and was removed after validation. Full coverage, individual commands, findings, and limitations are in `docs/backend-testing.md`.
 
-Known warning: pytest passed with a non-blocking Starlette deprecation warning about `httpx` use with `starlette.testclient` and a suggestion to use `httpx2`. Do not change dependencies without evaluating compatibility and need.
+An earlier scaffold run reported a Starlette/httpx deprecation warning; the latest full test run completed without warnings. Do not change dependencies without evaluating compatibility and need.
 
 The prior environment used Python 3.13.2, Node 22.12.0, npm 11.0.0, and Docker Compose 5.0.0-desktop.1. `.env` files and secrets are intentionally not committed. `GET /health` does not test the database.
+
+The current role mapping is IA-16 and remains unapproved. Academic Administrators issue/revoke; Platform Administrators manage master data/signing trust; Learners can list only their own linked credentials; Instructor/Support Staff are denied operational routes; verifier lookup is anonymous but minimized. Production key custody, rate limiting, object-level instructor scopes, replacement issuance, and independent trusted timestamps are not implemented.
 
 ## Requirements that must remain visible
 
@@ -77,4 +79,4 @@ The complete text and remaining original criteria are in [docs/original-problem-
 
 The user approved the existing architecture as the implementation baseline on 2026-11-11 and directed the team to proceed using conservative documented assumptions. Keep unapproved business/security semantics explicit; do not infer permission grants or claim assumptions are user-approved.
 
-The Phase 4 logical design and initial physical schema exist. Phase 3 authentication/authorization behavior is not implemented, despite the User/Role persistence tables. No credential APIs or production signing-key custody exist. The deterministic synthetic-data generator and validators are present under `backend/scripts/`; see `docs/database/seed-data-guide.md`. Preserve the stipulated LRN, CRD, and VER formats and the documented MVP allocation assumption. Keep all other unresolved decisions explicit and do not mark Phase 4 complete prematurely.
+The Phase 4 logical design and initial physical schema exist. Initial authentication/authorization and credential lifecycle APIs are now implemented, but remain incomplete and subject to review; no production signing-key custody exists. The deterministic synthetic-data generator and validators are present under `backend/scripts/`; see `docs/database/seed-data-guide.md`. Preserve the stipulated LRN, CRD, and VER formats and the documented MVP allocation assumption. Keep all other unresolved decisions explicit and do not mark Phases 3–9 complete prematurely.

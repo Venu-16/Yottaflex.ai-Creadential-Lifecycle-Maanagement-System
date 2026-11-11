@@ -1,5 +1,7 @@
 # Full-Dataset Analytics Demo
 
+> **Note added in Phase 12.** This is the project author's guide to the Analytics page on the full dataset. It was not re-run as written. Its commands are PowerShell, it uses ports 55438, 18080 and 5178 from the author's machine, and it refers to `data/validation/api_performance_report.json`, which is not in the repository. On a Linux or macOS checkout the committed manifests do not verify (see D-01 in [known-issues.md](known-issues.md#seed-data-and-full-dataset-tools)). For a demonstration that runs on a fresh setup, use [demo-guide.md](demo-guide.md).
+
 This guide covers the isolated full-profile PostgreSQL import and the live
 Data & Analytics page. It does not modify the source export, generated
 manifests, ground-truth files, existing Compose services, or existing database

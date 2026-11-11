@@ -1,12 +1,13 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.dependencies import reject_nul_characters
 from app.core.errors import ServiceError
 
 logging.basicConfig(
@@ -22,7 +23,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(
+    api_router, prefix="/api/v1", dependencies=[Depends(reject_nul_characters)]
+)
 
 
 @app.exception_handler(ServiceError)

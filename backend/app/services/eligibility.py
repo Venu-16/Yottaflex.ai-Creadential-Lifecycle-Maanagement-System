@@ -27,6 +27,12 @@ from app.models.domain import (
 
 EVALUATOR_VERSION = "credential-eligibility-v1"
 
+# Reason codes that mean the rule itself cannot be evaluated safely. They send the
+# decision to manual review instead of producing an eligible or ineligible outcome.
+REVIEW_REASON_CODES = frozenset(
+    {"UNSUPPORTED_ATTEMPT_SELECTION_POLICY", "RULE_HAS_NO_REQUIREMENTS"}
+)
+
 
 def canonical_json(value: Any) -> bytes:
     return json.dumps(
@@ -121,20 +127,42 @@ def evaluate_and_record(
     evidence_rows: list[dict[str, Any]] = []
     selected_attempt: AssessmentAttempt | None = None
 
+    # A rule that requires neither completion nor a score has nothing to evaluate.
+    # Such rules are rejected when created; a stored one is never auto-approved.
+    if not requires_completion and minimum_score is None:
+        reasons.append("RULE_HAS_NO_REQUIREMENTS")
+    # Evidence only counts when the learner holds a non-cancelled enrollment in the
+    # course that the rule covers.
+    if not enrollments:
+        reasons.append("MISSING_ENROLLMENT")
+
+    completion_is_recorded_complete = (
+        completion is not None
+        and completion.status == "completed"
+        and completion.completed_at is not None
+    )
+    # A completion dated after the evaluation time has not happened yet.
+    completion_is_usable = (
+        completion_is_recorded_complete and completion.completed_at <= now
+    )
     if requires_completion:
         if completion is None:
             reasons.append("MISSING_COMPLETION")
-        elif completion.status != "completed" or completion.completed_at is None:
+        elif not completion_is_recorded_complete:
             reasons.append("COURSE_INCOMPLETE")
-        else:
-            evidence_rows.append(
-                {
-                    "completion_record_id": str(completion.id),
-                    "status": completion.status,
-                    "completed_at": completion.completed_at.isoformat(),
-                    "course_id": str(completion.course_id),
-                }
-            )
+        elif not completion_is_usable:
+            reasons.append("COMPLETION_DATE_IN_FUTURE")
+    # Usable completion evidence is always captured, including for score-only rules,
+    # because issuance requires a completion dated on or before the issue time.
+    if completion_is_usable:
+        evidence_rows.append(
+            {
+                "completion_record_id": str(completion.id),
+                "status": completion.status,
+                "completed_at": completion.completed_at.isoformat(),
+                "course_id": str(completion.course_id),
+            }
+        )
     if policy != "latest_graded":
         reasons.append("UNSUPPORTED_ATTEMPT_SELECTION_POLICY")
     elif minimum_score is not None:
@@ -169,6 +197,9 @@ def evaluate_and_record(
             )
             if selected_attempt is None or selected_attempt.score is None:
                 reasons.append("MISSING_ASSESSMENT")
+            elif selected_attempt.graded_at > now:
+                # A grade dated after the evaluation time is not yet usable evidence.
+                reasons.append("ASSESSMENT_DATE_IN_FUTURE")
             elif selected_attempt.score < minimum_score:
                 reasons.append("ASSESSMENT_BELOW_THRESHOLD")
             else:
@@ -183,7 +214,7 @@ def evaluate_and_record(
                     }
                 )
 
-    needs_review = "UNSUPPORTED_ATTEMPT_SELECTION_POLICY" in reasons
+    needs_review = bool(REVIEW_REASON_CODES.intersection(reasons))
     outcome = "needs_review" if needs_review else ("ineligible" if reasons else "eligible")
     snapshot = {
         "learner_id": str(learner.id),

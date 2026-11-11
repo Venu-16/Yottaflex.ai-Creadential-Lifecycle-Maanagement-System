@@ -1,7 +1,9 @@
+import json
 from collections.abc import Callable
+from typing import Any
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy import select
@@ -64,3 +66,48 @@ def require_roles(*allowed_roles: str) -> Callable:
         return user
 
     return dependency
+
+
+NUL = "\x00"
+_NUL_DETAIL = "Request contains an unsupported NUL character."
+
+
+def _contains_nul(value: Any) -> bool:
+    """Walk parsed JSON iteratively and report a NUL character in any key or string."""
+    pending = [value]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, str):
+            if NUL in item:
+                return True
+        elif isinstance(item, dict):
+            for key, child in item.items():
+                if isinstance(key, str) and NUL in key:
+                    return True
+                pending.append(child)
+        elif isinstance(item, list):
+            pending.extend(item)
+    return False
+
+
+async def reject_nul_characters(request: Request) -> None:
+    """Reject NUL characters in the path, query string, or JSON body.
+
+    PostgreSQL cannot store or compare text that contains NUL, so such input can
+    never match or become a valid record. Rejecting it here returns a clear 422
+    instead of letting the database driver fail part-way through a request.
+    """
+    if NUL in request.scope.get("path", "") or any(
+        NUL in key or NUL in value for key, value in request.query_params.multi_items()
+    ):
+        raise HTTPException(status_code=422, detail=_NUL_DETAIL)
+    body = await request.body()
+    # A NUL can appear in valid JSON only as the escape sequence \u0000.
+    if b"\\u0000" not in body:
+        return
+    try:
+        parsed = json.loads(body)
+    except (ValueError, RecursionError):
+        return  # Not valid JSON: normal request validation reports it.
+    if _contains_nul(parsed):
+        raise HTTPException(status_code=422, detail=_NUL_DETAIL)

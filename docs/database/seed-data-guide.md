@@ -1,5 +1,11 @@
 # Synthetic Seed Data Guide
 
+> **Note added in Phase 12.** The commands below are PowerShell. POSIX shell equivalents for the starter profile are in the [README](../../README.md#seed-data); they were run and the validator returned `passed` with 30 checks. Three things to know before running anything here:
+>
+> - `SECRET_KEY` must be exported and must be at least 32 bytes, or `--reset` fails.
+> - Without `--output-dir`, `--ground-truth-dir` and `--report`, the scripts overwrite tracked files under `data/`.
+> - On a Linux or macOS checkout the committed manifests do not verify. See D-01 to D-05 in [known-issues.md](../known-issues.md#seed-data-and-full-dataset-tools).
+
 ## Scope and safety
 
 The generator loads deterministic, synthetic records into a migrated PostgreSQL

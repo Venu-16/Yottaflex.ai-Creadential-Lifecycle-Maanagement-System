@@ -1369,10 +1369,14 @@ def test_lifecycle_issue_idempotency_portable_verification_and_revocation(
     assert overview.json()["total_eligible_learners"] == expected_eligible_learners
     assert overview.json()["total_credentials_issued"] == 1
     assert overview.json()["total_revoked_credentials"] == 1
+    # Agreed definition: issued learner/course slots divided by all slots that hold an
+    # eligible decision. Two slots are eligible here: the issued learner, and the
+    # LRN-654321 probe learner, whose eligible decision this test inserted above and
+    # who never received a credential. One of two slots is issued.
     assert overview.json()["credential_issuance_rate"] == {
-        "percent": 100.0,
+        "percent": 50.0,
         "numerator": 1,
-        "denominator": 1,
+        "denominator": 2,
         "definition": (
             "Distinct issued learner/course credential slots divided by all distinct "
             "learner/course slots with an eligible decision (all time)."

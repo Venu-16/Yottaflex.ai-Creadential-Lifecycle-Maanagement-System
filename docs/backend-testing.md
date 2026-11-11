@@ -1,179 +1,196 @@
-# Backend Testing and Hardening
+# Testing
 
-## Current validation
+This document describes the automated tests, how to run them, what they cover, and what they do not cover.
 
-The Phase 9 regression ran the full backend suite against a fresh, disposable
-PostgreSQL 17 database:
+**Current result: 122 passed, 0 failed, 0 skipped** when a test database is configured (about 75 seconds). Without a test database: 25 passed, 97 skipped.
 
-- **30 passed, 0 failed**
-- 9 PostgreSQL API integration cases, including anonymous and role-denial
-  checks, learner object scope, account isolation, and public disclosure
-- 13 unit tests for authentication primitives and cryptography
-- 3 PostgreSQL schema metadata tests
-- 4 synthetic-data fixture tests
-- 1 health endpoint test
+Last run for this document: Python 3.11.2, PostgreSQL 16.2, from a clean copy of the code.
 
-The PostgreSQL run used the disposable `phase9-pg-test` container, a tmpfs
-database named `credential_phase9_test`, and host port `55437`; it was removed
-after validation. The synthetic dataset was not used or modified.
+## Contents
 
-The integration suite verifies authentication failures and inactive accounts,
-deny-by-default permissions for learner, Instructor, Support Staff, Platform
-Administrator, and third-party internal access, master-data and lifecycle
-routes, eligibility evidence and attempt selection, pre-completion/unknown
-learner/unknown rule issuance rejection, scheduled rule versions, idempotency,
-concurrent duplicate award protection, key rotation and historical
-verification behavior, revocation, audit/reporting, public-response
-minimization, database constraints, and rollback on signing and database
-failures.
+- [Test layout](#test-layout)
+- [How to run](#how-to-run)
+- [Test database safety rules](#test-database-safety-rules)
+- [What the tests cover](#what-the-tests-cover)
+- [Other checks](#other-checks)
+- [What is not tested](#what-is-not-tested)
+- [History](#history)
 
-Phase 9 authorization checks additionally confirmed:
+## Test layout
 
-- Anonymous access to the tested protected operations returns `401`;
-  disallowed authenticated roles and learners attempting privileged operations
-  receive `403`.
-- A learner sees only credentials linked to the authenticated user; another
-  learner's self-credential list is empty. The API has no user lookup/update
-  endpoint (`/users/{id}` is `404`; mutating `/auth/me` is `405`).
-- Public credential-ID verification returns only the documented verification
-  fields and omits learner names, learner IDs, and assessment evidence.
-- The observed behavior matches the restrictive IA-16 assumption. This does
-  not approve the role matrix or implement instructor object scopes.
+All tests are in `backend/tests/` and run with Pytest. Configuration is in `backend/pytest.ini`.
 
-The configured signing private key is read from backend environment settings
-and consumed by the signing service. Source inspection found no private-key
-field in API request/response schemas or ORM records, no private-key reference
-in frontend source or the production bundle, and no logging call that emits
-the configured key. The public-key registration response is also tested not
-to expose private material. These checks are bounded source/response checks,
-not a production key-custody audit. Production requires a managed secret
-store or KMS/HSM-backed signing boundary, least-privilege workload access,
-audited rotation/revocation, and tested recovery procedures; environment
-variables alone do not provide production key custody.
+| File | Tests | Needs PostgreSQL | Subject |
+|---|---:|---|---|
+| `test_health.py` | 1 | no | `GET /health` |
+| `unit/test_security_and_crypto.py` | 13 | no | Password hashing, settings validation, JWT, canonical JSON, SHA-256, Ed25519 |
+| `unit/test_domain_schema.py` | 3 | no | Table registration and PostgreSQL DDL compilation |
+| `unit/test_seed_data.py` | 4 | no | Seed generator determinism, volumes, anomaly fixtures |
+| `unit/test_full_dataset_import.py` | 4 | no | Import value conversion, count and checksum checks, database-name guard |
+| `integration/test_api_workflows.py` | 11 | yes | Authentication, role denial, full lifecycle, concurrency, reports |
+| `integration/test_issuance_business_rules.py` | 27 | yes | Conditions under which a credential may or may not be issued |
+| `integration/test_api_input_safety.py` | 53 | yes | Malformed, oversized and out-of-range input |
+| `integration/test_credential_lifecycle_analytics.py` | 6 | yes | Credential lifecycle report |
+| **Total** | **122** | | |
 
-Additional checks passed:
+Supporting files:
 
-- `python -m compileall -q app migrations scripts tests`
-- Alembic `upgrade head` and `check` against the disposable PostgreSQL database
-- OpenAPI generation: 34 paths, with the HTTP bearer scheme present
-- Docker Compose configuration validation
-- Frontend production build
-- `git diff --check`
+- `conftest.py` sets placeholder `DATABASE_URL` and `SECRET_KEY` values so that the application can be imported without a `.env` file.
+- `integration/support.py` holds the shared `Workspace` helper, which signs in an administrator and builds learners, courses, rules, completions and credentials through the API.
+- `tests/e2e/` is an empty package. There are no end-to-end tests.
 
-The documented Compose startup, migration, and demo-user bootstrap commands
-were run against a separate fresh project. PostgreSQL became healthy; the
-backend health check and frontend returned HTTP 200; the Academic
-Administrator bootstrap succeeded twice; login, `/auth/me`, and the database
-role assignment were verified. The project, network, and named database volume
-were removed afterward. See
-[acceptance-test-report.md](acceptance-test-report.md) for the full matrix and
-fresh-setup results.
+The counts include parametrized cases. A test function that runs with five inputs counts as five tests.
 
-## Run tests safely (PowerShell)
+## How to run
 
-Run from the repository root. This creates a named container with a temporary
-in-memory database directory, separate from any project or synthetic-data
-database. The integration fixture refuses to run unless its database name
-contains `test` and the schema is empty.
+From `backend/` with the virtual environment active (see the [README](../README.md#2-configure-the-backend)).
 
-```powershell
-$pgPassword = "phase65-disposable-only"
-docker run -d --name phase65-pg-test `
-  --tmpfs /var/lib/postgresql/data:rw,size=512m `
-  -e POSTGRES_USER=phase65_test `
-  -e "POSTGRES_PASSWORD=$pgPassword" `
-  -e POSTGRES_DB=credential_phase65_test `
-  -p 127.0.0.1:55435:5432 postgres:17-alpine
+**Unit tests only.** No database is needed:
 
-for ($i = 0; $i -lt 30; $i++) {
-  docker exec phase65-pg-test pg_isready -q -U phase65_test -d credential_phase65_test
-  if ($LASTEXITCODE -eq 0) { break }
-  Start-Sleep -Seconds 2
-}
-if ($LASTEXITCODE -ne 0) { throw "Disposable PostgreSQL did not become ready" }
-
-Set-Location .\backend
-$env:API_TEST_DATABASE_URL = "postgresql+psycopg://phase65_test:$pgPassword@127.0.0.1:55435/credential_phase65_test"
-python -m pytest -q
-python -m compileall -q app migrations scripts tests
-
-$env:DATABASE_URL = $env:API_TEST_DATABASE_URL
-$env:SECRET_KEY = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
-python -m alembic upgrade head
-python -m alembic check
-
-@'
-from app.main import app
-schema = app.openapi()
-print("OpenAPI paths:", len(schema["paths"]))
-print("Bearer auth scheme:", "HTTPBearer" in schema["components"]["securitySchemes"])
-'@ | python -
-
-Set-Location ..
-docker compose --env-file .env.example config --quiet
-git diff --check
+```bash
+python -m pytest
 ```
 
-After validation, stop and remove only the disposable container created above:
+Expected: `25 passed, 97 skipped, 1 warning`. Each skipped test reports `API_TEST_DATABASE_URL must point to a dedicated disposable test database.`
 
-```powershell
-docker rm -f phase65-pg-test
+**All tests.** Create an empty database whose name contains `test`, then set `API_TEST_DATABASE_URL`:
+
+```bash
+createdb credential_api_test
+export API_TEST_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost:5432/credential_api_test
+python -m pytest
 ```
 
-Do not point `API_TEST_DATABASE_URL` or `DATABASE_URL` at the synthetic seed
-database, a shared development database, or any database containing data.
-Alembic validation applies the project schema to the disposable container;
-removing that container discards the database.
+PowerShell: `$env:API_TEST_DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@localhost:5432/credential_api_test"`.
 
-## Findings fixed in this pass
+Expected: `122 passed, 1 warning`.
 
-- Malformed PBKDF2 hashes with empty or incorrect-length digests could be
-  accepted for an empty password; hash decoding now validates base64 and
-  requires the configured salt and digest lengths.
-- A zero-minute JWT override previously fell through to the configured default;
-  non-positive token lifetimes are rejected, including invalid configuration.
-- Long-lived access-token configuration now rejects zero/negative lifetimes.
-- Documented placeholder JWT secrets and wildcard CORS origins are rejected by
-  settings validation.
-- A future-effective rule version previously marked the current version
-  superseded immediately, leaving no effective rule until the scheduled start.
-  Selection now honors effective timestamps while both scheduled versions
-  remain selectable in their respective periods.
-- Portable verification now rejects non-JSON values, safely handles malformed
-  issuer/key claims, and reports a known credential payload mismatch as
-  `TAMPERED`.
-- Signing failures now return a sanitized service error and roll back all
-  issuance-side rows. PostgreSQL constraint failures are also checked for
-  rollback and sanitized responses.
-- Enrollment, completion, course, rule, and signing-key timestamps now reject
-  timezone-naive inputs.
-- Issuer and learner-self credential list endpoints now enforce bounded
-  pagination.
-- The integration fixture now uses a fresh SQLAlchemy session per request and
-  rolls it back on exceptions, matching the production dependency behavior.
+The warning is a `StarletteDeprecationWarning` from the test client (`Using httpx with starlette.testclient is deprecated`). It comes from the installed library versions and does not affect the results.
 
-## Remaining gaps and integration impact
+**A subset:**
 
-This is a focused hardening/test pass, **not a complete penetration test or
-production security sign-off**. SQL injection was checked by source inspection
-of the API/service query paths; automated tests do not substitute for external
-penetration testing.
+```bash
+python -m pytest tests/unit
+python -m pytest tests/integration/test_issuance_business_rules.py
+python -m pytest -k "idempotency"
+```
 
-- Role assignments remain implementation assumption IA-16, not an approved
-  actor matrix. Frontend authorization must not be treated as a security
-  boundary; backend roles remain authoritative.
-- No request rate limiter or explicit request-body size limit is implemented.
-  Public verification and login should not be exposed to untrusted Internet
-  traffic until abuse controls are added.
-- Production signing-key custody, external trusted timestamps, credential
-  replacement, and user/role administration remain out of scope.
-- Instructor and Support Staff object-level access is not implemented.
-- Database-unavailable behavior is fail-closed by the request path, but was
-  not fault-injected in this pass.
-- The frontend integrates login and core lifecycle screens, but does not yet
-  provide portable-payload verification, account/role administration, or the
-  production controls listed above. The UI remains subject to backend
-  authorization; it is not a security boundary.
+A disposable PostgreSQL container also works as the test database:
 
-These remaining items do not change the original requirements and do not mark
-any roadmap phase complete.
+```bash
+docker run -d --name credential-pg-test --tmpfs /var/lib/postgresql/data \
+  -e POSTGRES_USER=test -e POSTGRES_PASSWORD=local-test-only -e POSTGRES_DB=credential_api_test \
+  -p 127.0.0.1:55432:5432 postgres:17-alpine
+export API_TEST_DATABASE_URL=postgresql+psycopg://test:local-test-only@127.0.0.1:55432/credential_api_test
+python -m pytest
+docker rm -f credential-pg-test
+```
+
+The container commands were not run for this document because Docker was not available. The project author used the same approach with PostgreSQL 17.
+
+## Test database safety rules
+
+The integration fixture (`api_database` in `integration/test_api_workflows.py`) creates every table before each test and **drops every table after it**. It protects other databases in three ways:
+
+1. It uses only `API_TEST_DATABASE_URL`. It never uses `DATABASE_URL`.
+2. It fails if the database name does not contain `test`.
+3. It fails if the database already contains any table: `API integration test database must be empty before the test run.`
+
+Rules for whoever runs the tests:
+
+- Never point `API_TEST_DATABASE_URL` at the application database, a synthetic-data database, or any database with data you need.
+- Do not run two test sessions against the same test database at the same time. The second one finds tables and fails.
+- If a run is interrupted and leaves tables behind, drop and recreate the test database (`dropdb credential_api_test && createdb credential_api_test`).
+- The tests build the schema from the SQLAlchemy models, not from the Alembic migration. Check the migration separately (see [Other checks](#other-checks)).
+
+## What the tests cover
+
+### Authentication and authorization
+
+- Wrong password, missing token, malformed token, bad signature, expired token and inactive account all return `401`.
+- A signed-in user whose role has no access gets `403`. This is tested for `SUPPORT_STAFF`, `INSTRUCTOR`, `THIRD_PARTY_VERIFIER` and `LEARNER`.
+- A Platform Administrator cannot issue or revoke credentials. A learner cannot issue or revoke.
+- A learner sees only credentials linked to their own account. A second learner sees an empty list.
+- Password hashes round-trip, reject wrong passwords, and reject malformed stored hashes.
+- Settings reject a short `SECRET_KEY` and a zero or negative token lifetime.
+
+### Lifecycle
+
+`test_lifecycle_issue_idempotency_portable_verification_and_revocation` exercises the whole flow in one test: master data, rule versions, completion, assessment, eligibility, issuance, idempotent retry, portable verification, tampering, key rotation, revocation, audit history and reports.
+
+### Issuance rules
+
+Each of these must **not** produce a credential:
+
+- Completion dated in the future, on create and on update.
+- A stored completion that is still ahead of the server clock.
+- A score-only rule when the course is not completed.
+- A rule with no requirement at all (rejected on create; a stored empty rule never grants eligibility).
+- No enrollment, an enrollment in a different course, or a cancelled enrollment.
+- An enrollment with no completion record, or a completion with status `in_progress`, `incomplete` or `failed`.
+- A missing or ungraded assessment, or a grade dated in the future.
+
+The same file checks that complete evidence still produces a credential, that an issued credential is never dated before its completion, and that a rejection leaves existing credentials and audit history unchanged.
+
+### Uniqueness and concurrency
+
+- The same `Idempotency-Key` with the same body returns the same credential.
+- A different key for the same learner and course returns `409`.
+- `test_credential_award_uniqueness_is_enforced_concurrently_by_postgresql` inserts the same award row from two PostgreSQL sessions and confirms that only one succeeds.
+
+### Verification and integrity
+
+- Canonical JSON and SHA-256 are deterministic.
+- Ed25519 accepts a valid signature and rejects an altered one.
+- Portable verification returns `VALID` for a real payload and `TAMPERED` for an altered one.
+- The public verification response contains no learner name, learner ID or assessment data.
+
+### Input safety
+
+- NUL characters in a path, query string or JSON body return `422` on every route, including login and public verification.
+- Text that only looks like a NUL escape is accepted.
+- Timestamps outside the supported range and timestamps without a timezone return `422`.
+- Report date ranges outside the supported range return `422`.
+- Page offsets are bounded.
+- Unknown identifiers return `404`.
+- No response contains database driver text, SQL type names or a stack trace.
+
+### Reports
+
+- Reports return zeros, not errors, on an empty database.
+- The credential lifecycle report is correct for zero, one active, one revoked and several credentials, and with filters applied.
+- An unknown status filter returns `422`.
+
+## Other checks
+
+These are not part of the Pytest suite. Each was run by hand for this document.
+
+| Check | Command | Result |
+|---|---|---|
+| Migration applies | `alembic upgrade head` | Revision `af6e5dad6637` applied |
+| Models match migration | `alembic check` | `No new upgrade operations detected.` |
+| Frontend builds | `npm ci && npm run build` in `frontend/` | Build succeeded |
+| API walkthrough | The `curl` sequence in [demo-guide.md](demo-guide.md) | Issued `CRD-2026-000001`; verification returned `VALID`, `VALID`, `TAMPERED`, then `REVOKED` after revocation |
+| Starter seed data | `generate_seed_data.py --profile starter --reset`, then `validate_seed_data.py` | `passed`, 30 checks |
+| Frontend in a browser | Headless browser, three demo roles, every route; learner, eligibility, issuance and verification forms submitted | Pages rendered; role-restricted routes redirected; forms returned the expected results. Minor defects: see [known-issues.md](known-issues.md#frontend) |
+
+## What is not tested
+
+- **Frontend.** There are no component, unit or end-to-end tests. The manual browser check listed above did not submit the course, rule, enrollment, completion, assessment or revocation forms.
+- **Docker Compose.** Not run for this document.
+- **Full seed dataset.** No test in the suite loads the 839,400-row dataset. Its validation status is described in [known-issues.md](known-issues.md#seed-data-and-full-dataset-tools).
+- **Load and performance.** No load test exists. `scripts/benchmark_api.py` is a short read-only timing run (20 list and report requests); it returned `passed` against a scratch full-dataset database, and no result is committed.
+- **Database outage.** Behaviour when PostgreSQL is unreachable is not tested.
+- **Concurrent issuance through the API.** Concurrency is tested at the database constraint, not with parallel HTTP requests.
+- **Security testing.** No penetration test, dependency scan or static security analysis has been run. See [security.md](security.md#limitations).
+- **PostgreSQL 17.** The last full run used PostgreSQL 16.2. The Docker image uses 17.
+
+## History
+
+| When | Result | Notes |
+|---|---|---|
+| Phase 9 (project author) | 30 passed | PostgreSQL 17 in a disposable container; OpenAPI had 34 paths |
+| Before Phase 10.2 | 1 failed, 35 passed | Baseline at commit `bf13481` |
+| After Phase 10.2 | 122 passed | 86 tests added; the failing test was fixed; OpenAPI has 40 paths and 48 operations |
+
+The Phase 10.2 changes and the three new test files were merged together with this documentation.

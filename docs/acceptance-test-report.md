@@ -1,5 +1,7 @@
 # Phase 8 Acceptance and Demo Readiness Report
 
+> **Note added in Phase 12.** This is the project author's Phase 8 report and is kept as a historical record. It was not re-run. It predates the Phase 10.2 fixes, so its test counts and some behaviour descriptions are out of date. Its setup commands are PowerShell. For current instructions use [README.md](../README.md), [backend-testing.md](backend-testing.md) and [demo-guide.md](demo-guide.md).
+
 ## Result
 
 **Overall status: PARTIAL.** The current MVP passed its tested lifecycle,

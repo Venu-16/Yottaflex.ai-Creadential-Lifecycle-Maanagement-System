@@ -74,6 +74,8 @@ from app.schemas.api import (
     LearnerCreate,
     LearnerResponse,
     LearnerUpdate,
+    MAX_SUPPORTED_YEAR,
+    MIN_SUPPORTED_YEAR,
     PaginatedResponse,
     PortableCredentialResponse,
     PortableVerificationRequest,
@@ -133,6 +135,11 @@ def _commit(db: Session) -> None:
         ) from exc
 
 
+# Largest accepted page offset. PostgreSQL rejects an OFFSET above the signed 64-bit
+# range, and no table in this system approaches this size.
+MAX_PAGE_OFFSET = 1_000_000_000
+
+
 def _page(query: Any, db: Session, limit: int, offset: int) -> list[Any]:
     return db.scalars(query.limit(limit).offset(offset)).all()
 
@@ -161,7 +168,7 @@ def _credential_response(credential: Credential) -> dict[str, Any]:
 )
 def list_learners(
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*DATA_READERS)),
 ) -> list[Learner]:
@@ -242,7 +249,7 @@ def patch_learner(
 )
 def own_credentials(
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
     db: Session = Depends(get_db),
     actor: User = Depends(require_roles(LEARNER)),
 ) -> list[Credential]:
@@ -267,7 +274,7 @@ def own_credentials(
 )
 def list_courses(
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*DATA_READERS)),
 ) -> list[Course]:
@@ -325,7 +332,7 @@ def patch_course(
 )
 def list_issuers(
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*DATA_READERS)),
 ) -> list[Issuer]:
@@ -447,7 +454,7 @@ def remove_signing_key_trust(
 )
 def list_rules(
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*DATA_READERS)),
 ) -> list[dict[str, Any]]:
@@ -578,7 +585,7 @@ def list_enrollments(
     learner_id: UUID | None = None,
     course_id: UUID | None = None,
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*DATA_READERS)),
 ) -> list[Enrollment]:
@@ -625,7 +632,7 @@ def add_enrollment(
 def list_completions(
     learner_id: UUID | None = None,
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*DATA_READERS)),
 ) -> list[CompletionRecord]:
@@ -698,7 +705,7 @@ def patch_completion(
 def list_attempts(
     completion_record_id: UUID | None = None,
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*DATA_READERS)),
 ) -> list[AssessmentAttempt]:
@@ -796,7 +803,7 @@ def evaluate_eligibility(
 def list_credentials(
     learner_id: UUID | None = None,
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*DATA_READERS)),
 ) -> list[dict[str, Any]]:
@@ -972,7 +979,7 @@ def revoke(
 )
 def list_revocations(
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*AUDIT_READERS)),
 ) -> list[Revocation]:
@@ -989,7 +996,7 @@ def list_revocations(
 def list_verification_requests(
     outcome: str | None = None,
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*AUDIT_READERS)),
 ) -> list[dict[str, Any]]:
@@ -1024,7 +1031,7 @@ def list_verification_requests(
 def list_audit(
     target_reference: str | None = None,
     limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=MAX_PAGE_OFFSET),
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*AUDIT_READERS)),
 ) -> list[AuditEvent]:
@@ -1142,6 +1149,15 @@ def _rate(numerator: int, denominator: int, definition: str) -> AnalyticsRate:
 def _date_bounds(
     date_from: date | None, date_to: date | None
 ) -> tuple[datetime | None, datetime | None]:
+    for value in (date_from, date_to):
+        if value and not MIN_SUPPORTED_YEAR <= value.year <= MAX_SUPPORTED_YEAR:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Dates must fall between the years {MIN_SUPPORTED_YEAR} "
+                    f"and {MAX_SUPPORTED_YEAR}."
+                ),
+            )
     if date_from and date_to and date_to < date_from:
         raise HTTPException(status_code=422, detail="date_to must be on or after date_from.")
     if date_from and date_to and (date_to - date_from).days > 3660:
@@ -1391,9 +1407,7 @@ def credential_lifecycle_analytics(
     ).all()
     return CredentialLifecycleAnalytics(
         as_of=as_of,
-        credential_status=[
-            AnalyticsBucket(key=key, count=count) for key, count in status_counts
-        ],
+        credential_status=status_counts,
         issuance_over_time=[
             AnalyticsTimeBucket(period=str(row[0]), count=int(row[1]))
             for row in issuance_rows

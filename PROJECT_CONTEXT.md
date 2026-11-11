@@ -144,6 +144,7 @@ The architecture baseline is approved. A first backend API/workflow increment is
 │   ├── DECISIONS.md
 │   ├── api-documentation.md
 │   ├── backend-testing.md
+│   ├── acceptance-test-report.md
 │   ├── architecture.md
 │   ├── business-rules.md
 │   ├── database/
@@ -184,7 +185,7 @@ The architecture baseline is approved. A first backend API/workflow increment is
 
 ## Current implementation state
 
-**Current implementation is partial; no Phase 3–9 checklist is marked complete and Phase 11 remains in progress.** The backend and frontend implement the current MVP workflows, but the complete original acceptance criteria and production readiness have not been demonstrated.
+**Current implementation is partial; no Phase 3–9 checklist is marked complete and Phase 11 remains in progress.** The user-requested Phase 8 final acceptance pass found strong evidence for the MVP lifecycle but also documented open requirements and production risks in [docs/acceptance-test-report.md](docs/acceptance-test-report.md).
 
 Implemented and verified:
 
@@ -197,9 +198,9 @@ Implemented and verified:
 - Fixed-seed, parameterized synthetic data generator; full profile meets required entity volumes, exports separate ground truth and anomaly fixtures, and validates against a disposable PostgreSQL database.
 - Authenticated APIs for master data, versioned rules, enrollment/completion/assessment, eligibility, issuance, public verification, revocation, audit, and basic reports.
 
-The frontend production build passed after the Phase 7 UI implementation. Backend tests passed 27/27 against a separate temporary PostgreSQL 17 database. A live browser flow against a separate disposable PostgreSQL backend created a learner, course, rule, enrollment, completion, assessment attempt, eligibility decision, credential, and revocation; verification returned VALID before revocation and REVOKED afterwards. Login/logout, role-based navigation and denial, directory updates, reports, audit, and mobile navigation were also exercised. These checks do not constitute a complete original-criteria acceptance review or production sign-off.
+The Phase 9 backend suite passed 30/30 against a separate temporary PostgreSQL 17 test database (9 API integration, 13 authentication/cryptography unit, 3 schema, 4 seed-data, and 1 health test). New integration coverage checks anonymous 401s, disallowed-role/learner 403s, linked-learner credential isolation, absence of user lookup/update routes, and public verification disclosure. Python compileall, Alembic upgrade/check, OpenAPI generation (34 paths), Compose configuration, and the frontend production build passed. A fresh Compose project ran the documented migration and demo-user bootstrap commands twice, passed backend/frontend HTTP checks and login, and verified the Academic Administrator role assignment in PostgreSQL before removing its temporary volume. The earlier browser workflow exercised learner/course/rule and completion/assessment management, ineligible rejection, eligible issuance, public VALID → REVOKED verification, audit/report views, protected navigation, login/logout, and mobile navigation. An initial fresh bootstrap exposed a missing `scripts/` Docker image copy; it was fixed and verified. These checks do not constitute a complete original-criteria acceptance review or production sign-off.
 
-Not implemented or incomplete: production-approved role matrix/object scopes, account and role administration beyond a local bootstrap script, production key custody, issuance replacement, rate limiting, trusted timestamps, broad security hardening, and complete original-criteria acceptance coverage. Aggregate learner/course dashboard counts are not exposed by the API and are not fabricated. The application is not production-ready.
+Not implemented or incomplete: production-approved role matrix and any additional object scopes, account and role administration beyond a local bootstrap script, production key custody, issuance replacement, rate limiting/body-size limits, trusted timestamps, portable-verification UI, distribution-quality benchmarking, and complete original-criteria acceptance coverage. Aggregate learner/course dashboard counts are not exposed by the API and are not fabricated. The application is not production-ready.
 
 ## Verified initialization results
 
@@ -215,7 +216,7 @@ The following checks were run during initial setup (historical scaffold checks, 
 - `docker compose --env-file .env.example config --quiet`: passed.
 - Isolated `docker compose up --build`: PostgreSQL health check passed; backend health returned `ok`; frontend returned HTTP 200. The test project and its named volume were removed afterward.
 
-The current backend implementation has separate tests and checks; see the latest validation note in [AI_HANDOVER.md](AI_HANDOVER.md).
+The latest acceptance evidence and exact temporary database details are in [docs/acceptance-test-report.md](docs/acceptance-test-report.md) and [AI_HANDOVER.md](AI_HANDOVER.md).
 
 ## Known warnings and limitations
 
@@ -237,7 +238,7 @@ The current backend implementation has separate tests and checks; see the latest
 
 ## Development roadmap
 
-The authoritative 11-phase checklist and phase exit conditions are in [docs/development-progress.md](docs/development-progress.md). Roadmap Phases 1, 2, and 10 are complete; Phases 3–9 and 11 remain unchecked. The current task is Phase 6 backend implementation; the task-level Phase 5 seed-data increment maps to completed roadmap Phase 10.
+The authoritative 11-phase checklist and phase exit conditions are in [docs/development-progress.md](docs/development-progress.md). Roadmap Phases 1, 2, and 10 are complete; Phases 3–9 and 11 remain unchecked. The current product task is Phase 11 acceptance and hardening; the user-requested final acceptance phase has evidence but is not complete.
 
 ## Phase 2 architecture proposal
 

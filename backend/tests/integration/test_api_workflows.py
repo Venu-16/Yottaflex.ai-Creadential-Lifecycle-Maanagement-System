@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
@@ -32,6 +33,7 @@ from app.models.domain import (
     Role,
     User,
     UserRole,
+    VerificationRequest,
 )
 
 
@@ -215,8 +217,20 @@ def test_authentication_and_deny_by_default(
         ("get", "/api/v1/verification/requests", None, {}),
         ("get", "/api/v1/audit", None, {}),
         ("get", "/api/v1/reports/summary", None, {}),
+        ("get", "/api/v1/reports/overview", None, {}),
+        ("get", "/api/v1/reports/credential-lifecycle", None, {}),
+        ("get", "/api/v1/reports/verification-analytics", None, {}),
+        ("get", "/api/v1/reports/academic-analytics", None, {}),
+        ("get", "/api/v1/reports/data-quality", None, {}),
+        ("get", "/api/v1/reports/performance", None, {}),
     ]
     for method, path, body, extra_headers in protected_requests:
+        anonymous = api_client.request(
+            method, path, json=body, headers=extra_headers
+        )
+        assert anonymous.status_code == 401, (
+            f"Anonymous {method.upper()} {path}: {anonymous.text}"
+        )
         response = api_client.request(
             method,
             path,
@@ -246,6 +260,316 @@ def test_platform_administrator_cannot_issue_or_revoke(
         json={"reason_code": "UNAUTHORIZED"},
         headers=headers,
     ).status_code == 403
+
+
+def test_analytics_empty_database_and_date_filter_validation(
+    api_client: TestClient, api_database: Session
+) -> None:
+    _, password = create_role_user(api_database, "ACADEMIC_ADMINISTRATOR")
+    token = authenticate(api_client, "test-academic_administrator", password)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    overview = api_client.get("/api/v1/reports/overview", headers=headers)
+    assert overview.status_code == 200
+    assert overview.json()["total_learners"] == 0
+    assert overview.json()["total_courses"] == 0
+    assert overview.json()["credential_issuance_rate"]["percent"] is None
+    assert overview.json()["credential_issuance_rate"]["denominator"] == 0
+    assert overview.json()["completion_rate"]["percent"] is None
+
+    lifecycle = api_client.get(
+        "/api/v1/reports/credential-lifecycle", headers=headers
+    )
+    verification = api_client.get(
+        "/api/v1/reports/verification-analytics", headers=headers
+    )
+    academic = api_client.get("/api/v1/reports/academic-analytics", headers=headers)
+    assert lifecycle.status_code == verification.status_code == academic.status_code == 200
+    assert lifecycle.json()["issuance_over_time"] == []
+    assert verification.json()["outcome_counts"] == []
+    assert verification.json()["total_requests"] == 0
+    assert academic.json()["course_distribution"] == []
+    assert academic.json()["assessment_score_distribution"] == []
+    assert "ground_truth" not in (
+        overview.text + lifecycle.text + verification.text + academic.text
+    ).lower()
+
+    invalid_range = api_client.get(
+        "/api/v1/reports/verification-analytics",
+        params={"date_from": "2026-11-02", "date_to": "2026-11-01"},
+        headers=headers,
+    )
+    assert invalid_range.status_code == 422
+    assert api_client.get(
+        "/api/v1/reports/performance", headers=headers
+    ).json()["measured"] is False
+
+
+@pytest.mark.parametrize("role_code", ["INSTRUCTOR", "THIRD_PARTY_VERIFIER"])
+def test_unapproved_roles_cannot_access_internal_workflows(
+    role_code: str, api_client: TestClient, api_database: Session
+) -> None:
+    _, password = create_role_user(api_database, role_code)
+    token = authenticate(api_client, f"test-{role_code.lower()}", password)
+    headers = {"Authorization": f"Bearer {token}"}
+    protected_requests = [
+        ("get", "/api/v1/learners", None),
+        ("get", f"/api/v1/learners/{uuid4()}", None),
+        ("post", "/api/v1/courses", {"course_code": "DENIED", "title": "Denied"}),
+        ("get", "/api/v1/credentials?limit=1", None),
+        ("get", "/api/v1/credentials/CRD-2026-000001", None),
+        ("get", "/api/v1/credentials/CRD-2026-000001/portable", None),
+        ("get", "/api/v1/credentials/CRD-2026-000001/history", None),
+        ("get", "/api/v1/revocations", None),
+        ("get", "/api/v1/verification/requests", None),
+        ("get", "/api/v1/audit", None),
+        ("get", "/api/v1/reports/summary", None),
+        ("get", "/api/v1/reports/overview", None),
+        ("get", "/api/v1/reports/credential-lifecycle", None),
+        ("get", "/api/v1/reports/verification-analytics", None),
+        ("get", "/api/v1/reports/academic-analytics", None),
+        ("get", "/api/v1/reports/data-quality", None),
+        ("get", "/api/v1/reports/performance", None),
+        (
+            "post",
+            "/api/v1/eligibility/evaluate",
+            {"learner_id": str(uuid4()), "rule_code": "DENIED"},
+        ),
+        (
+            "post",
+            "/api/v1/credentials/issue",
+            {"learner_id": str(uuid4()), "rule_code": "DENIED"},
+        ),
+        (
+            "post",
+            "/api/v1/revocations/CRD-2026-000001",
+            {"reason_code": "DENIED"},
+        ),
+    ]
+    for method, path, body in protected_requests:
+        response = api_client.request(method, path, json=body, headers=headers)
+        assert response.status_code == 403, f"{role_code} {method.upper()} {path}: {response.text}"
+
+
+def test_learner_object_scope_account_isolation_and_public_disclosure(
+    api_client: TestClient,
+    api_database: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    _, password = create_role_user(api_database, "ACADEMIC_ADMINISTRATOR")
+    admin = api_database.query(User).filter_by(
+        principal_key="test-academic_administrator"
+    ).one()
+    admin_headers = {
+        "Authorization": f"Bearer {authenticate(api_client, admin.principal_key, password)}"
+    }
+
+    _, platform_password = create_role_user(api_database, "PLATFORM_ADMINISTRATOR")
+    platform_admin = api_database.query(User).filter_by(
+        principal_key="test-platform_administrator"
+    ).one()
+    platform_headers = {
+        "Authorization": f"Bearer {authenticate(api_client, platform_admin.principal_key, platform_password)}"
+    }
+
+    private_key = Ed25519PrivateKey.generate()
+    private_bytes = private_key.private_bytes(
+        serialization.Encoding.Raw,
+        serialization.PrivateFormat.Raw,
+        serialization.NoEncryption(),
+    )
+    public_bytes = private_key.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    )
+    monkeypatch.setattr(
+        settings, "credential_signing_private_key", base64.b64encode(private_bytes).decode()
+    )
+    monkeypatch.setattr(settings, "credential_signing_issuer_code", "SCOPE-ISSUER")
+    monkeypatch.setattr(settings, "credential_signing_key_id", "scope-key-1")
+
+    assert api_client.post(
+        "/api/v1/issuers",
+        json={"issuer_code": "SCOPE-ISSUER", "name": "Scope Issuer"},
+        headers=platform_headers,
+    ).status_code == 201
+    registered_key = api_client.post(
+        "/api/v1/issuers/SCOPE-ISSUER/signing-keys",
+        json={
+            "key_id": "scope-key-1",
+            "public_key_base64": base64.b64encode(public_bytes).decode(),
+            "algorithm": "Ed25519",
+            "valid_from": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+        },
+        headers=platform_headers,
+    )
+    assert registered_key.status_code == 201
+    assert "private" not in registered_key.text.lower()
+
+    learner_response = api_client.post(
+        "/api/v1/learners",
+        json={"display_name": "Credential Owner"},
+        headers=admin_headers,
+    )
+    assert learner_response.status_code == 201
+    learner_id = learner_response.json()["id"]
+    course_response = api_client.post(
+        "/api/v1/courses",
+        json={"course_code": "SCOPE-COURSE", "title": "Scope Course"},
+        headers=admin_headers,
+    )
+    assert course_response.status_code == 201
+    course_id = course_response.json()["id"]
+    rule_response = api_client.post(
+        "/api/v1/credential-rules",
+        json={
+            "rule_code": "SCOPE-RULE",
+            "name": "Scope Rule",
+            "course_id": course_id,
+            "criteria": {"requires_completion": True},
+            "effective_from": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
+        },
+        headers=admin_headers,
+    )
+    assert rule_response.status_code == 201
+    enrollment = api_client.post(
+        "/api/v1/enrollments",
+        json={"learner_id": learner_id, "course_id": course_id},
+        headers=admin_headers,
+    )
+    assert enrollment.status_code == 201
+    completion = api_client.post(
+        "/api/v1/completions",
+        json={
+            "enrollment_id": enrollment.json()["id"],
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        },
+        headers=admin_headers,
+    )
+    assert completion.status_code == 201
+    issued = api_client.post(
+        "/api/v1/credentials/issue",
+        json={"learner_id": learner_id, "rule_code": "SCOPE-RULE"},
+        headers={
+            **admin_headers,
+            "Idempotency-Key": "scope-isolation-issuance-key-01",
+        },
+    )
+    assert issued.status_code == 201
+
+    first_learner, learner_password = create_role_user(api_database, "LEARNER")
+    second_learner_user = User(
+        principal_key="test-second-learner",
+        password_hash=hash_password("local-test-password-2026"),
+        display_name="Second Learner",
+        is_active=True,
+    )
+    learner_role = api_database.query(Role).filter_by(role_code="LEARNER").one()
+    api_database.add(second_learner_user)
+    api_database.flush()
+    api_database.add(
+        UserRole(
+            user_id=second_learner_user.id,
+            role_id=learner_role.id,
+            granted_by_user_id=admin.id,
+        )
+    )
+    own_learner = api_database.get(Learner, UUID(learner_id))
+    own_learner.user_id = first_learner.id
+    other_learner = Learner(
+        learner_id="LRN-765432",
+        display_name="Unrelated Learner",
+        user_id=second_learner_user.id,
+    )
+    api_database.add(other_learner)
+    api_database.commit()
+
+    first_headers = {
+        "Authorization": f"Bearer {authenticate(api_client, first_learner.principal_key, learner_password)}"
+    }
+    second_learner_password = "local-test-password-2026"
+    second_headers = {
+        "Authorization": f"Bearer {authenticate(api_client, second_learner_user.principal_key, second_learner_password)}"
+    }
+    self_profile = api_client.get("/api/v1/auth/me", headers=first_headers)
+    assert self_profile.status_code == 200
+    assert self_profile.json()["id"] == str(first_learner.id)
+    assert "password_hash" not in self_profile.json()
+    own_credentials = api_client.get("/api/v1/learners/me/credentials", headers=first_headers)
+    assert own_credentials.status_code == 200
+    assert [row["credential_id"] for row in own_credentials.json()] == [
+        issued.json()["credential_id"]
+    ]
+    other_credentials = api_client.get(
+        "/api/v1/learners/me/credentials", headers=second_headers
+    )
+    assert other_credentials.status_code == 200
+    assert other_credentials.json() == []
+
+    forbidden_requests = [
+        ("get", f"/api/v1/learners/{other_learner.id}", None),
+        ("get", "/api/v1/learners", None),
+        ("get", f"/api/v1/credentials/{issued.json()['credential_id']}", None),
+        (
+            "get",
+            f"/api/v1/credentials/{issued.json()['credential_id']}/portable",
+            None,
+        ),
+        (
+            "get",
+            f"/api/v1/credentials/{issued.json()['credential_id']}/history",
+            None,
+        ),
+        ("get", "/api/v1/revocations", None),
+        ("get", "/api/v1/verification/requests", None),
+        ("get", "/api/v1/audit", None),
+        ("get", "/api/v1/reports/summary", None),
+        (
+            "post",
+            f"/api/v1/revocations/{issued.json()['credential_id']}",
+            {"reason_code": "UNAUTHORIZED"},
+        ),
+        (
+            "post",
+            "/api/v1/credentials/issue",
+            {"learner_id": learner_id, "rule_code": "SCOPE-RULE"},
+        ),
+    ]
+    for method, path, body in forbidden_requests:
+        response = api_client.request(
+            method,
+            path,
+            json=body,
+            headers={**first_headers, "Idempotency-Key": "learner-access-denied-01"},
+        )
+        assert response.status_code == 403, f"{method.upper()} {path}: {response.text}"
+
+    assert api_client.get(f"/api/v1/users/{second_learner_user.id}", headers=first_headers).status_code == 404
+    assert api_client.patch(
+        "/api/v1/auth/me", json={"display_name": "Changed"}, headers=first_headers
+    ).status_code == 405
+
+    public_verification = api_client.post(
+        "/api/v1/verification/credential-id",
+        params={"credential_id": issued.json()["credential_id"]},
+    )
+    assert public_verification.status_code == 200
+    assert set(public_verification.json()) == {
+        "verification_id",
+        "overall_result",
+        "integrity_result",
+        "issuer_trust_result",
+        "lifecycle_result",
+        "credential_id",
+        "issuer_code",
+        "message",
+    }
+    assert "Credential Owner" not in public_verification.text
+    assert "LRN-" not in public_verification.text
+    assert "evidence" not in public_verification.text.lower()
 
 
 def test_authentication_rejects_bad_expired_and_inactive_tokens(
@@ -507,6 +831,27 @@ def test_lifecycle_issue_idempotency_portable_verification_and_revocation(
         headers=headers,
     )
     assert rule_response.status_code == 201
+    credentials_before_early_attempts = api_database.query(Credential).count()
+    early_issue = api_client.post(
+        "/api/v1/credentials/issue",
+        json={"learner_id": learner_id, "rule_code": "API-RULE"},
+        headers={**headers, "Idempotency-Key": "early-issue-before-completion-01"},
+    )
+    assert early_issue.status_code == 422
+    assert api_database.query(Credential).count() == credentials_before_early_attempts
+    unknown_learner_issue = api_client.post(
+        "/api/v1/credentials/issue",
+        json={"learner_id": str(uuid4()), "rule_code": "API-RULE"},
+        headers={**headers, "Idempotency-Key": "unknown-learner-issuance-01"},
+    )
+    assert unknown_learner_issue.status_code == 404
+    unknown_rule_issue = api_client.post(
+        "/api/v1/credentials/issue",
+        json={"learner_id": learner_id, "rule_code": "MISSING-RULE"},
+        headers={**headers, "Idempotency-Key": "unknown-rule-issuance-01"},
+    )
+    assert unknown_rule_issue.status_code == 404
+    assert api_database.query(Credential).count() == credentials_before_early_attempts
     invalid_rule = api_client.post(
         "/api/v1/credential-rules",
         json={
@@ -1009,6 +1354,85 @@ def test_lifecycle_issue_idempotency_portable_verification_and_revocation(
     revocation_report = api_client.get("/api/v1/reports/revocations", headers=headers)
     assert revocation_report.status_code == 200
     assert revocation_report.json()["by_reason"]["TEST_REVOCATION"] == 1
+    overview = api_client.get("/api/v1/reports/overview", headers=headers)
+    assert overview.status_code == 200, overview.text
+    assert overview.json()["total_learners"] == api_database.query(Learner).count()
+    assert overview.json()["total_courses"] == 1
+    assert overview.json()["total_enrollments"] == 1
+    assert overview.json()["total_completed_records"] == 1
+    expected_eligible_learners = (
+        api_database.query(EligibilityDecision.learner_id)
+        .filter(EligibilityDecision.outcome == "eligible")
+        .distinct()
+        .count()
+    )
+    assert overview.json()["total_eligible_learners"] == expected_eligible_learners
+    assert overview.json()["total_credentials_issued"] == 1
+    assert overview.json()["total_revoked_credentials"] == 1
+    assert overview.json()["credential_issuance_rate"] == {
+        "percent": 100.0,
+        "numerator": 1,
+        "denominator": 1,
+        "definition": (
+            "Distinct issued learner/course credential slots divided by all distinct "
+            "learner/course slots with an eligible decision (all time)."
+        ),
+    }
+    lifecycle_analytics = api_client.get(
+        "/api/v1/reports/credential-lifecycle",
+        params={
+            "date_from": datetime.now(timezone.utc).date().isoformat(),
+            "date_to": datetime.now(timezone.utc).date().isoformat(),
+        },
+        headers=headers,
+    )
+    assert lifecycle_analytics.status_code == 200, lifecycle_analytics.text
+    assert lifecycle_analytics.json()["credential_status"] == [
+        {"key": "revoked", "count": 1}
+    ]
+    assert sum(
+        row["count"] for row in lifecycle_analytics.json()["issuance_over_time"]
+    ) == 1
+    verification_analytics = api_client.get(
+        "/api/v1/reports/verification-analytics",
+        params={"outcome": "VALID"},
+        headers=headers,
+    )
+    assert verification_analytics.status_code == 200, verification_analytics.text
+    assert verification_analytics.json()["total_requests"] == api_database.query(
+        VerificationRequest
+    ).filter(VerificationRequest.overall_result == "VALID").count()
+    academic_analytics = api_client.get(
+        "/api/v1/reports/academic-analytics",
+        params={"course_id": course_id, "limit": 1},
+        headers=headers,
+    )
+    assert academic_analytics.status_code == 200, academic_analytics.text
+    assert academic_analytics.json()["course_distribution"][0]["enrolled_learners"] == 1
+    assert academic_analytics.json()["course_distribution"][0]["completed_records"] == 1
+    assert sum(
+        row["count"]
+        for row in academic_analytics.json()["assessment_score_distribution"]
+    ) >= 1
+    assert "ground_truth" not in (
+        overview.text
+        + lifecycle_analytics.text
+        + verification_analytics.text
+        + academic_analytics.text
+    ).lower()
+    reversed_dates = api_client.get(
+        "/api/v1/reports/academic-analytics",
+        params={"date_from": "2026-11-02", "date_to": "2026-11-01"},
+        headers=headers,
+    )
+    assert reversed_dates.status_code == 422
+    assert api_client.get(
+        "/api/v1/reports/data-quality", headers=headers
+    ).json()["status"] == "not_configured"
+    assert api_client.get(
+        "/api/v1/reports/performance", headers=headers
+    ).json()["status"] == "not_measured"
+
     verification_history = api_client.get("/api/v1/verification/requests", headers=headers)
     assert verification_history.status_code == 200
     assert all("learner_id" not in row for row in verification_history.json())
@@ -1142,3 +1566,72 @@ def test_lifecycle_issue_idempotency_portable_verification_and_revocation(
     assert api_database.query(EligibilityDecision).count() >= 3
     assert api_database.query(CompletionRecord).count() == 3
     assert api_database.query(AssessmentAttempt).count() == 4
+
+
+def test_data_quality_compares_import_snapshot_after_live_activity(
+    api_client: TestClient,
+    api_database: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _, password = create_role_user(api_database, "PLATFORM_ADMINISTRATOR")
+    token = authenticate(api_client, "test-platform_administrator", password)
+    headers = {"Authorization": f"Bearer {token}"}
+    table_names = sorted(Base.metadata.tables)
+    empty_counts = {name: 0 for name in table_names}
+    reports = {
+        "manifest": {
+            "seed": 20261022,
+            "generated_at": "2026-10-22T00:00:00Z",
+            "seed_data_sha256": "a" * 64,
+            "row_counts": empty_counts,
+        },
+        "import": {
+            "status": "passed",
+            "imported_row_counts": empty_counts,
+            "total_imported": 0,
+        },
+        "validation": {
+            "status": "passed",
+            "completed_at": "2026-10-23T00:00:00Z",
+            "actual_row_counts": empty_counts,
+            "checks": [{"name": "sample_check", "passed": True}],
+        },
+        "verification": {
+            "status": "passed",
+            "missing_reference_count": 0,
+            "source_file_checksum_mismatches": [],
+        },
+    }
+    configured_paths = {}
+    for label, report in reports.items():
+        path = tmp_path / f"{label}.json"
+        path.write_text(json.dumps(report), encoding="utf-8")
+        configured_paths[label] = str(path)
+    monkeypatch.setattr(settings, "full_dataset_manifest_path", configured_paths["manifest"])
+    monkeypatch.setattr(
+        settings, "full_dataset_import_report_path", configured_paths["import"]
+    )
+    monkeypatch.setattr(
+        settings, "full_dataset_validation_report_path", configured_paths["validation"]
+    )
+    monkeypatch.setattr(
+        settings, "full_dataset_verification_report_path", configured_paths["verification"]
+    )
+
+    api_database.add(Learner(learner_id="LRN-000001", display_name="Post-import learner"))
+    api_database.commit()
+    response = api_client.get("/api/v1/reports/data-quality", headers=headers)
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["status"] == "passed"
+    assert result["last_successful_validation_at"] == "2026-10-23T00:00:00Z"
+    learner_count = next(row for row in result["row_counts"] if row["table"] == "learners")
+    assert learner_count == {
+        "table": "learners",
+        "expected": 0,
+        "imported": 0,
+        "current": 1,
+        "matches": True,
+    }

@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     demo_user_password: str | None = None
     demo_user_role: str | None = None
     demo_user_display_name: str | None = None
+    full_dataset_manifest_path: str | None = None
+    full_dataset_import_report_path: str | None = None
+    full_dataset_validation_report_path: str | None = None
+    full_dataset_verification_report_path: str | None = None
+    api_performance_report_path: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

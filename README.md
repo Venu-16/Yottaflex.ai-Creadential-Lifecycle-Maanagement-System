@@ -91,6 +91,31 @@ The key registration endpoint accepts public key material only. See
 [docs/api-documentation.md](./docs/api-documentation.md) for the routes,
 verification trust behavior, outcomes, and remaining limitations.
 
+Environment variables are a local development configuration mechanism, not
+production key custody. Production deployment must use a managed secrets
+service or KMS/HSM-backed signing boundary with restricted workload access,
+audited rotation/revocation, and tested recovery procedures.
+
+### Suggested demonstration sequence
+
+1. Start PostgreSQL, backend, and frontend; apply migrations and bootstrap
+   separate local Platform Administrator and Academic Administrator accounts.
+2. As Platform Administrator, register the active issuer and its public
+   Ed25519 key. Configure the matching private seed only in the backend's
+   local environment.
+3. Sign in as Academic Administrator and create a learner and course.
+4. Define a threshold-based credential rule, then record enrollment,
+   completion, and a below-threshold assessment attempt.
+5. Evaluate and show the ineligible result; record a passing assessment,
+   re-evaluate, and issue the eligible credential.
+6. Open public verification for the credential and show `VALID`.
+7. Revoke the credential with a reason, verify it again to show `REVOKED`, and
+   finish by reviewing the audit trail.
+
+Use locally generated demo data and credentials only. The actor assignments
+remain restrictive implementation assumptions, not an approved production
+role policy.
+
 ## Run frontend independently
 
 In another terminal:
@@ -149,3 +174,13 @@ The backend is not production-ready: the actor matrix, replacement workflow,
 rate limiting, external trusted timestamps, and production key custody remain
 open. See [docs/api-documentation.md](./docs/api-documentation.md) and
 [docs/DECISIONS.md](./docs/DECISIONS.md).
+
+## Acceptance status
+
+The latest acceptance pass ran 29 backend tests against disposable PostgreSQL,
+rebuilt the frontend, and exercised a fresh Docker Compose/browser credential
+lifecycle. The backend image includes the demo-user bootstrap script. The full
+requirement traceability matrix, scenario/security results, demo sequence, and
+remaining gaps are in [docs/acceptance-test-report.md](./docs/acceptance-test-report.md).
+The project remains partially complete; this evidence is not a production
+security sign-off.

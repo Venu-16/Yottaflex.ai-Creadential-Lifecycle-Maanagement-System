@@ -84,7 +84,7 @@ export function LoadingState({ label = "Loading records…" }) {
 }
 
 export function StatusPill({ value }) {
-  const positive = ["active", "completed", "eligible", "valid", "trusted"].includes(String(value).toLowerCase());
-  const negative = ["revoked", "ineligible", "tampered", "invalid_signature"].includes(String(value).toLowerCase());
+  const positive = ["active", "completed", "eligible", "valid", "trusted", "passed", "matched"].includes(String(value).toLowerCase());
+  const negative = ["revoked", "ineligible", "tampered", "invalid_signature", "failed", "mismatch"].includes(String(value).toLowerCase());
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${positive ? "bg-sage-100 text-sage-900" : negative ? "bg-rose-100 text-rose-800" : "bg-lavender-100 text-lavender-800"}`}>{String(value || "unknown").replaceAll("_", " ")}</span>;
 }

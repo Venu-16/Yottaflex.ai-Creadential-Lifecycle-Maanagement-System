@@ -2,24 +2,54 @@
 
 ## Current validation
 
-The Phase 6.5 hardening pass ran the full backend suite against a fresh,
-disposable PostgreSQL 17 database:
+The Phase 9 regression ran the full backend suite against a fresh, disposable
+PostgreSQL 17 database:
 
-- **27 passed, 0 failed**
-- 6 PostgreSQL API integration tests
+- **30 passed, 0 failed**
+- 9 PostgreSQL API integration cases, including anonymous and role-denial
+  checks, learner object scope, account isolation, and public disclosure
 - 13 unit tests for authentication primitives and cryptography
 - 3 PostgreSQL schema metadata tests
 - 4 synthetic-data fixture tests
 - 1 health endpoint test
 
+The PostgreSQL run used the disposable `phase9-pg-test` container, a tmpfs
+database named `credential_phase9_test`, and host port `55437`; it was removed
+after validation. The synthetic dataset was not used or modified.
+
 The integration suite verifies authentication failures and inactive accounts,
-deny-by-default permissions (including learner issue/revoke denial), master
-data and lifecycle routes, eligibility evidence and attempt selection,
-scheduled rule versions, idempotency, concurrent duplicate award protection,
-key rotation and historical verification behavior, revocation, audit/reporting,
-public-response minimization, database constraints, and rollback on signing
-and database failures. The generated synthetic dataset was not used or
-modified.
+deny-by-default permissions for learner, Instructor, Support Staff, Platform
+Administrator, and third-party internal access, master-data and lifecycle
+routes, eligibility evidence and attempt selection, pre-completion/unknown
+learner/unknown rule issuance rejection, scheduled rule versions, idempotency,
+concurrent duplicate award protection, key rotation and historical
+verification behavior, revocation, audit/reporting, public-response
+minimization, database constraints, and rollback on signing and database
+failures.
+
+Phase 9 authorization checks additionally confirmed:
+
+- Anonymous access to the tested protected operations returns `401`;
+  disallowed authenticated roles and learners attempting privileged operations
+  receive `403`.
+- A learner sees only credentials linked to the authenticated user; another
+  learner's self-credential list is empty. The API has no user lookup/update
+  endpoint (`/users/{id}` is `404`; mutating `/auth/me` is `405`).
+- Public credential-ID verification returns only the documented verification
+  fields and omits learner names, learner IDs, and assessment evidence.
+- The observed behavior matches the restrictive IA-16 assumption. This does
+  not approve the role matrix or implement instructor object scopes.
+
+The configured signing private key is read from backend environment settings
+and consumed by the signing service. Source inspection found no private-key
+field in API request/response schemas or ORM records, no private-key reference
+in frontend source or the production bundle, and no logging call that emits
+the configured key. The public-key registration response is also tested not
+to expose private material. These checks are bounded source/response checks,
+not a production key-custody audit. Production requires a managed secret
+store or KMS/HSM-backed signing boundary, least-privilege workload access,
+audited rotation/revocation, and tested recovery procedures; environment
+variables alone do not provide production key custody.
 
 Additional checks passed:
 
@@ -27,7 +57,17 @@ Additional checks passed:
 - Alembic `upgrade head` and `check` against the disposable PostgreSQL database
 - OpenAPI generation: 34 paths, with the HTTP bearer scheme present
 - Docker Compose configuration validation
+- Frontend production build
 - `git diff --check`
+
+The documented Compose startup, migration, and demo-user bootstrap commands
+were run against a separate fresh project. PostgreSQL became healthy; the
+backend health check and frontend returned HTTP 200; the Academic
+Administrator bootstrap succeeded twice; login, `/auth/me`, and the database
+role assignment were verified. The project, network, and named database volume
+were removed afterward. See
+[acceptance-test-report.md](acceptance-test-report.md) for the full matrix and
+fresh-setup results.
 
 ## Run tests safely (PowerShell)
 
@@ -130,9 +170,10 @@ penetration testing.
 - Instructor and Support Staff object-level access is not implemented.
 - Database-unavailable behavior is fail-closed by the request path, but was
   not fault-injected in this pass.
-- The frontend still has no integrated authentication or lifecycle screens.
-  Local frontend integration may proceed against the documented API, but the
-  above authorization and operational limits must remain explicit.
+- The frontend integrates login and core lifecycle screens, but does not yet
+  provide portable-payload verification, account/role administration, or the
+  production controls listed above. The UI remains subject to backend
+  authorization; it is not a security boundary.
 
 These remaining items do not change the original requirements and do not mark
 any roadmap phase complete.

@@ -3,16 +3,18 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, require_roles
+from app.core.config import settings
 from app.core.errors import ServiceError
 from app.core.roles import (
     AUDIT_READERS,
@@ -24,6 +26,7 @@ from app.core.roles import (
     PLATFORM_ADMIN,
     SUPPORT,
 )
+from app.database.base import Base
 from app.database.dependencies import get_db
 from app.models.domain import (
     AssessmentAttempt,
@@ -34,6 +37,7 @@ from app.models.domain import (
     CredentialAward,
     CredentialRule,
     CredentialRuleVersion,
+    CredentialScope,
     EligibilityDecision,
     EligibilityReason,
     Enrollment,
@@ -48,6 +52,10 @@ from app.models.domain import (
 from app.schemas.api import (
     AssessmentAttemptCreate,
     AssessmentAttemptResponse,
+    AcademicAnalytics,
+    AnalyticsBucket,
+    AnalyticsOverview,
+    AnalyticsRate,
     AuditEventResponse,
     CompletionCreate,
     CompletionResponse,
@@ -77,6 +85,13 @@ from app.schemas.api import (
     RuleVersionCreate,
     SigningKeyCreate,
     CourseUpdate,
+    CredentialLifecycleAnalytics,
+    DataQualityReport,
+    DatasetCheck,
+    DatasetRowCount,
+    PerformanceReport,
+    AnalyticsTimeBucket,
+    VerificationAnalytics,
     VerificationResponse,
 )
 from app.services.audit import record_event
@@ -1109,3 +1124,695 @@ def verification_report(
             {"mode": row[0], "outcome": row[1], "count": row[2]} for row in rows
         ]
     }
+
+
+def _count(db: Session, statement: Any) -> int:
+    return int(db.scalar(statement) or 0)
+
+
+def _rate(numerator: int, denominator: int, definition: str) -> AnalyticsRate:
+    return AnalyticsRate(
+        percent=round(numerator * 100 / denominator, 2) if denominator else None,
+        numerator=numerator,
+        denominator=denominator,
+        definition=definition,
+    )
+
+
+def _date_bounds(
+    date_from: date | None, date_to: date | None
+) -> tuple[datetime | None, datetime | None]:
+    if date_from and date_to and date_to < date_from:
+        raise HTTPException(status_code=422, detail="date_to must be on or after date_from.")
+    if date_from and date_to and (date_to - date_from).days > 3660:
+        raise HTTPException(status_code=422, detail="Date range cannot exceed 10 years.")
+    start = (
+        datetime.combine(date_from, time.min, tzinfo=timezone.utc) if date_from else None
+    )
+    end = (
+        datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
+        if date_to
+        else None
+    )
+    return start, end
+
+
+def _within_dates(
+    column: Any, start: datetime | None, end: datetime | None
+) -> list[Any]:
+    conditions = []
+    if start is not None:
+        conditions.append(column >= start)
+    if end is not None:
+        conditions.append(column < end)
+    return conditions
+
+
+def _month_bucket(column: Any) -> Any:
+    utc_value = column.op("AT TIME ZONE")("UTC")
+    return func.to_char(func.date_trunc("month", utc_value), "YYYY-MM")
+
+
+@router.get(
+    "/reports/overview",
+    response_model=AnalyticsOverview,
+    tags=["reports"],
+    summary="Return database-backed academic and credential lifecycle KPIs",
+)
+def analytics_overview(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(*AUDIT_READERS)),
+) -> AnalyticsOverview:
+    as_of = datetime.now(timezone.utc)
+    learners = _count(db, select(func.count()).select_from(Learner))
+    courses = _count(db, select(func.count()).select_from(Course))
+    enrollments = _count(db, select(func.count()).select_from(Enrollment))
+    completed = _count(
+        db,
+        select(func.count())
+        .select_from(CompletionRecord)
+        .where(CompletionRecord.status == "completed"),
+    )
+    eligible_learners = _count(
+        db,
+        select(func.count(func.distinct(EligibilityDecision.learner_id)))
+        .select_from(EligibilityDecision)
+        .where(EligibilityDecision.outcome == "eligible"),
+    )
+    eligible_slots = (
+        select(
+            EligibilityDecision.learner_id,
+            EligibilityDecision.credential_scope_id,
+        )
+        .where(EligibilityDecision.outcome == "eligible")
+        .distinct()
+        .subquery()
+    )
+    issued_slots = (
+        select(Credential.learner_id, Credential.credential_scope_id)
+        .join(
+            EligibilityDecision,
+            EligibilityDecision.id == Credential.eligibility_decision_id,
+        )
+        .where(EligibilityDecision.outcome == "eligible")
+        .distinct()
+        .subquery()
+    )
+    issuance_numerator = _count(
+        db,
+        select(func.count())
+        .select_from(
+            issued_slots.join(
+                eligible_slots,
+                and_(
+                    issued_slots.c.learner_id == eligible_slots.c.learner_id,
+                    issued_slots.c.credential_scope_id
+                    == eligible_slots.c.credential_scope_id,
+                ),
+            )
+        ),
+    )
+    total_credentials = _count(db, select(func.count()).select_from(Credential))
+    revoked_ids = select(Revocation.credential_id).where(
+        Revocation.effective_at <= as_of
+    )
+    revoked = _count(
+        db,
+        select(func.count())
+        .select_from(Credential)
+        .where(Credential.id.in_(revoked_ids)),
+    )
+    verification_total = _count(
+        db, select(func.count()).select_from(VerificationRequest)
+    )
+    valid_verifications = _count(
+        db,
+        select(func.count())
+        .select_from(VerificationRequest)
+        .where(func.upper(VerificationRequest.overall_result) == "VALID"),
+    )
+    completed_enrollments = _count(
+        db,
+        select(func.count(func.distinct(CompletionRecord.enrollment_id)))
+        .select_from(CompletionRecord)
+        .where(
+            CompletionRecord.status == "completed",
+            CompletionRecord.enrollment_id.is_not(None),
+        ),
+    )
+    return AnalyticsOverview(
+        as_of=as_of,
+        total_learners=learners,
+        total_courses=courses,
+        total_enrollments=enrollments,
+        total_completed_records=completed,
+        total_eligible_learners=eligible_learners,
+        total_credentials_issued=total_credentials,
+        total_revoked_credentials=revoked,
+        total_verification_requests=verification_total,
+        credential_issuance_rate=_rate(
+            issuance_numerator,
+            _count(
+                db,
+                select(func.count()).select_from(eligible_slots),
+            ),
+            "Distinct issued learner/course credential slots divided by all distinct "
+            "learner/course slots with an eligible decision (all time).",
+        ),
+        revocation_rate=_rate(
+            revoked,
+            total_credentials,
+            "Credentials with a revocation effective as of the report timestamp "
+            "divided by all issued credentials (all time).",
+        ),
+        verification_success_rate=_rate(
+            valid_verifications,
+            verification_total,
+            "Verification requests whose overall result is VALID divided by all "
+            "verification requests (all time).",
+        ),
+        completion_rate=_rate(
+            completed_enrollments,
+            enrollments,
+            "Distinct enrollments with a completed completion record divided by all "
+            "enrollments (all time).",
+        ),
+    )
+
+
+@router.get(
+    "/reports/credential-lifecycle",
+    response_model=CredentialLifecycleAnalytics,
+    tags=["reports"],
+    summary="Aggregate credential issuance, revocation, and eligibility trends",
+)
+def credential_lifecycle_analytics(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    course_id: UUID | None = None,
+    credential_status: str | None = Query(
+        None, pattern="^(active|revoked)$"
+    ),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(*AUDIT_READERS)),
+) -> CredentialLifecycleAnalytics:
+    start, end = _date_bounds(date_from, date_to)
+    as_of = datetime.now(timezone.utc)
+    credential_query = select(Credential).where(
+        *_within_dates(Credential.issued_at, start, end)
+    )
+    if course_id is not None:
+        credential_query = credential_query.join(
+            CredentialScope,
+            CredentialScope.id == Credential.credential_scope_id,
+        ).where(CredentialScope.course_id == course_id)
+    effective_revocations = select(Revocation.credential_id).where(
+        Revocation.effective_at <= as_of
+    )
+    if credential_status == "active":
+        credential_query = credential_query.where(
+            Credential.id.not_in(effective_revocations)
+        )
+    elif credential_status == "revoked":
+        credential_query = credential_query.where(
+            Credential.id.in_(effective_revocations)
+        )
+    credential_rows = credential_query.subquery()
+    issued_count = _count(
+        db, select(func.count()).select_from(credential_rows)
+    )
+    revoked_count = _count(
+        db,
+        select(func.count())
+        .select_from(credential_rows)
+        .where(credential_rows.c.id.in_(effective_revocations)),
+    )
+    status_counts = []
+    for key, count in (
+        ("active", issued_count - revoked_count),
+        ("revoked", revoked_count),
+    ):
+        if count:
+            status_counts.append(AnalyticsBucket(key=key, count=count))
+
+    issue_bucket = _month_bucket(credential_rows.c.issued_at)
+    issuance_rows = db.execute(
+        select(issue_bucket, func.count())
+        .select_from(credential_rows)
+        .group_by(issue_bucket)
+        .order_by(issue_bucket)
+    ).all()
+    credential_ids = select(credential_rows.c.id)
+    revocation_conditions = [
+        Revocation.credential_id.in_(credential_ids),
+        *_within_dates(Revocation.effective_at, start, end),
+    ]
+    revocation_bucket = _month_bucket(Revocation.effective_at)
+    revocation_rows = db.execute(
+        select(revocation_bucket, func.count())
+        .where(*revocation_conditions)
+        .group_by(revocation_bucket)
+        .order_by(revocation_bucket)
+    ).all()
+
+    eligibility_query = select(
+        EligibilityDecision.outcome, func.count()
+    ).select_from(EligibilityDecision)
+    eligibility_conditions = _within_dates(EligibilityDecision.evaluated_at, start, end)
+    if course_id is not None:
+        eligibility_query = eligibility_query.join(
+            CredentialScope,
+            CredentialScope.id == EligibilityDecision.credential_scope_id,
+        ).where(CredentialScope.course_id == course_id)
+    eligibility_rows = db.execute(
+        eligibility_query.where(*eligibility_conditions)
+        .group_by(EligibilityDecision.outcome)
+        .order_by(EligibilityDecision.outcome)
+    ).all()
+    return CredentialLifecycleAnalytics(
+        as_of=as_of,
+        credential_status=[
+            AnalyticsBucket(key=key, count=count) for key, count in status_counts
+        ],
+        issuance_over_time=[
+            AnalyticsTimeBucket(period=str(row[0]), count=int(row[1]))
+            for row in issuance_rows
+        ],
+        revocations_over_time=[
+            AnalyticsTimeBucket(period=str(row[0]), count=int(row[1]))
+            for row in revocation_rows
+        ],
+        eligibility_outcomes=[
+            AnalyticsBucket(key=str(row[0]), count=int(row[1]))
+            for row in eligibility_rows
+        ],
+    )
+
+
+@router.get(
+    "/reports/verification-analytics",
+    response_model=VerificationAnalytics,
+    tags=["reports"],
+    summary="Aggregate verification results and trends",
+)
+def verification_analytics(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    outcome: str | None = Query(None, min_length=1, max_length=32),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(*AUDIT_READERS)),
+) -> VerificationAnalytics:
+    start, end = _date_bounds(date_from, date_to)
+    conditions = _within_dates(VerificationRequest.requested_at, start, end)
+    if outcome is not None:
+        conditions.append(VerificationRequest.overall_result == outcome)
+    grouped = (
+        select(
+            VerificationRequest.overall_result,
+            func.count(),
+        )
+        .where(*conditions)
+        .group_by(VerificationRequest.overall_result)
+        .order_by(VerificationRequest.overall_result)
+    )
+    outcome_rows = db.execute(grouped).all()
+    mode_rows = db.execute(
+        select(VerificationRequest.mode, func.count())
+        .where(*conditions)
+        .group_by(VerificationRequest.mode)
+        .order_by(VerificationRequest.mode)
+    ).all()
+    verification_bucket = _month_bucket(VerificationRequest.requested_at)
+    time_rows = db.execute(
+        select(
+            verification_bucket,
+            VerificationRequest.overall_result,
+            func.count(),
+        )
+        .where(*conditions)
+        .group_by(verification_bucket, VerificationRequest.overall_result)
+        .order_by(verification_bucket, VerificationRequest.overall_result)
+    ).all()
+    total = sum(int(row[1]) for row in outcome_rows)
+    return VerificationAnalytics(
+        as_of=datetime.now(timezone.utc),
+        total_requests=total,
+        outcome_counts=[
+            AnalyticsBucket(key=str(row[0]), count=int(row[1]))
+            for row in outcome_rows
+        ],
+        mode_counts=[
+            AnalyticsBucket(key=str(row[0]), count=int(row[1])) for row in mode_rows
+        ],
+        outcomes_over_time=[
+            AnalyticsTimeBucket(
+                period=str(row[0]), outcome=str(row[1]), count=int(row[2])
+            )
+            for row in time_rows
+        ],
+    )
+
+
+@router.get(
+    "/reports/academic-analytics",
+    response_model=AcademicAnalytics,
+    tags=["reports"],
+    summary="Aggregate enrollments, completions, assessment scores, and eligibility",
+)
+def academic_analytics(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    course_id: UUID | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(*AUDIT_READERS)),
+) -> AcademicAnalytics:
+    start, end = _date_bounds(date_from, date_to)
+    enrollment_counts = (
+        select(
+            Enrollment.course_id.label("course_id"),
+            func.count(func.distinct(Enrollment.learner_id)).label("learner_count"),
+        )
+        .where(*_within_dates(Enrollment.enrolled_at, start, end))
+        .group_by(Enrollment.course_id)
+        .subquery()
+    )
+    completion_counts = (
+        select(
+            CompletionRecord.course_id.label("course_id"),
+            func.sum(
+                case((CompletionRecord.status == "completed", 1), else_=0)
+            ).label("completed_count"),
+        )
+        .where(*_within_dates(CompletionRecord.recorded_at, start, end))
+        .group_by(CompletionRecord.course_id)
+        .subquery()
+    )
+    courses_query = (
+        select(
+            Course.id,
+            Course.course_code,
+            Course.title,
+            func.coalesce(enrollment_counts.c.learner_count, 0).label(
+                "enrolled_learners"
+            ),
+            func.coalesce(completion_counts.c.completed_count, 0).label(
+                "completed_records"
+            ),
+        )
+        .outerjoin(enrollment_counts, enrollment_counts.c.course_id == Course.id)
+        .outerjoin(completion_counts, completion_counts.c.course_id == Course.id)
+    )
+    if course_id is not None:
+        courses_query = courses_query.where(Course.id == course_id)
+    course_rows = db.execute(
+        courses_query.order_by(
+            func.coalesce(enrollment_counts.c.learner_count, 0).desc(),
+            Course.course_code,
+        ).limit(limit)
+    ).all()
+
+    score = AssessmentAttempt.score
+    score_range = case(
+        (score < 0, "below 0"),
+        (score < 60, "0-59"),
+        (score < 70, "60-69"),
+        (score < 80, "70-79"),
+        (score < 90, "80-89"),
+        (score <= 100, "90-100"),
+        else_="over 100",
+    )
+    score_order = case(
+        (score < 0, 0),
+        (score < 60, 1),
+        (score < 70, 2),
+        (score < 80, 3),
+        (score < 90, 4),
+        (score <= 100, 5),
+        else_=6,
+    )
+    score_query = select(
+        AssessmentAttempt.score_scale,
+        score_range.label("score_range"),
+        func.count(),
+    ).where(
+        AssessmentAttempt.score.is_not(None),
+        AssessmentAttempt.status == "graded",
+        *_within_dates(AssessmentAttempt.graded_at, start, end),
+    )
+    if course_id is not None:
+        score_query = score_query.join(
+            CompletionRecord,
+            CompletionRecord.id == AssessmentAttempt.completion_record_id,
+        ).where(CompletionRecord.course_id == course_id)
+    score_rows = db.execute(
+        score_query.group_by(AssessmentAttempt.score_scale, score_range, score_order)
+        .order_by(AssessmentAttempt.score_scale, score_order)
+    ).all()
+
+    eligibility_query = select(
+        EligibilityDecision.outcome, func.count()
+    ).select_from(EligibilityDecision)
+    if course_id is not None:
+        eligibility_query = eligibility_query.join(
+            CredentialScope,
+            CredentialScope.id == EligibilityDecision.credential_scope_id,
+        ).where(CredentialScope.course_id == course_id)
+    eligibility_rows = db.execute(
+        eligibility_query.where(
+            *_within_dates(EligibilityDecision.evaluated_at, start, end)
+        )
+        .group_by(EligibilityDecision.outcome)
+        .order_by(EligibilityDecision.outcome)
+    ).all()
+    return AcademicAnalytics(
+        as_of=datetime.now(timezone.utc),
+        course_distribution=[
+            {
+                "course_id": row[0],
+                "course_code": row[1],
+                "title": row[2],
+                "enrolled_learners": int(row[3]),
+                "completed_records": int(row[4]),
+            }
+            for row in course_rows
+        ],
+        assessment_score_distribution=[
+            {
+                "score_scale": str(row[0] or "unspecified"),
+                "range": str(row[1]),
+                "count": int(row[2]),
+            }
+            for row in score_rows
+        ],
+        eligibility_outcomes=[
+            AnalyticsBucket(key=str(row[0]), count=int(row[1]))
+            for row in eligibility_rows
+        ],
+    )
+
+
+def _read_report(path: str | None, label: str) -> dict[str, Any] | None:
+    if not path:
+        return None
+    report_path = Path(path)
+    try:
+        return json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(
+            status_code=503, detail=f"Configured {label} report is unavailable."
+        ) from exc
+
+
+def _report_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+@router.get(
+    "/reports/data-quality",
+    response_model=DataQualityReport,
+    tags=["reports"],
+    summary="Compare live database counts with imported dataset and validation reports",
+)
+def data_quality_report(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(*AUDIT_READERS)),
+) -> DataQualityReport:
+    manifest = _read_report(settings.full_dataset_manifest_path, "dataset manifest")
+    import_report = _read_report(
+        settings.full_dataset_import_report_path, "dataset import"
+    )
+    validation_report = _read_report(
+        settings.full_dataset_validation_report_path, "dataset validation"
+    )
+    verification_report = _read_report(
+        settings.full_dataset_verification_report_path, "database verification"
+    )
+    if manifest is None:
+        return DataQualityReport(
+            status="not_configured",
+            seed=None,
+            generation_timestamp=None,
+            dataset_sha256=None,
+            total_expected_rows=None,
+            total_imported_rows=None,
+            missing_reference_count=None,
+            last_successful_validation_at=None,
+            row_counts=[],
+            checks=[],
+            warnings=[
+                "Configure the full-dataset report paths to show import and validation status."
+            ],
+        )
+    if import_report is None or validation_report is None or verification_report is None:
+        return DataQualityReport(
+            status="not_configured",
+            seed=int(manifest.get("seed", 0)) or None,
+            generation_timestamp=_report_datetime(manifest.get("generated_at")),
+            dataset_sha256=manifest.get("seed_data_sha256"),
+            total_expected_rows=sum(manifest.get("row_counts", {}).values()),
+            total_imported_rows=None,
+            missing_reference_count=None,
+            last_successful_validation_at=None,
+            row_counts=[],
+            checks=[],
+            warnings=[
+                "Import, database-verification, and validation report paths must all be configured."
+            ],
+        )
+
+    expected_counts = manifest.get("row_counts", {})
+    imported_counts = import_report.get("imported_row_counts", {})
+    validation_counts = validation_report.get("actual_row_counts", {})
+    excluded = {"users", "roles", "user_roles", "idempotency_records"}
+    table_names = sorted(set(expected_counts) - excluded)
+    current_columns = [
+        select(func.count()).select_from(Base.metadata.tables[name]).scalar_subquery().label(name)
+        for name in table_names
+        if name in Base.metadata.tables
+    ]
+    current_values = db.execute(select(*current_columns)).mappings().one() if current_columns else {}
+    row_counts = []
+    for name in table_names:
+        expected = int(expected_counts[name])
+        imported = imported_counts.get(name)
+        current = int(current_values[name])
+        imported_value = int(imported) if imported is not None else None
+        row_counts.append(
+            DatasetRowCount(
+                table=name,
+                expected=expected,
+                imported=imported_value,
+                current=current,
+                matches=(
+                    imported_value == expected
+                    and current >= imported_value
+                    if imported_value is not None
+                    else None
+                ),
+            )
+        )
+
+    manifest_counts_match = all(row.matches is True for row in row_counts)
+    validations = validation_report.get("checks", [])
+    validation_checks = [
+        DatasetCheck(
+            name=str(item.get("name", "unknown")),
+            passed=bool(item.get("passed")),
+            details=item.get("details"),
+        )
+        for item in validations
+    ]
+    checks = [
+        DatasetCheck(
+            name="imported_counts_match_manifest_and_live_rows_are_retained",
+            passed=manifest_counts_match,
+            details=(
+                "The import snapshot is compared with the manifest; live counts may grow "
+                "as application activity adds records. Authentication/bootstrap tables "
+                "are excluded."
+            ),
+        ),
+        DatasetCheck(
+            name="import_completed",
+            passed=import_report.get("status") == "passed",
+            details=str(import_report.get("status", "unknown")),
+        ),
+        DatasetCheck(
+            name="database_verification_passed",
+            passed=verification_report.get("status") == "passed",
+            details=str(verification_report.get("status", "unknown")),
+        ),
+        *validation_checks,
+    ]
+    warnings = []
+    warnings.extend(import_report.get("source_file_checksum_mismatches", []))
+    warnings.extend(verification_report.get("source_file_checksum_mismatches", []))
+    status_value = (
+        "passed"
+        if import_report.get("status") == "passed"
+        and verification_report.get("status") == "passed"
+        and validation_report.get("status") == "passed"
+        and manifest_counts_match
+        else "failed"
+    )
+    last_validation = (
+        _report_datetime(validation_report.get("completed_at"))
+        if validation_report.get("status") == "passed"
+        else None
+    )
+    return DataQualityReport(
+        status=status_value,
+        seed=manifest.get("seed"),
+        generation_timestamp=_report_datetime(manifest.get("generated_at")),
+        dataset_sha256=manifest.get("seed_data_sha256"),
+        total_expected_rows=sum(expected_counts.get(name, 0) for name in table_names),
+        total_imported_rows=import_report.get("total_imported"),
+        missing_reference_count=verification_report.get("missing_reference_count"),
+        last_successful_validation_at=last_validation,
+        row_counts=row_counts,
+        checks=checks,
+        warnings=warnings,
+    )
+
+
+@router.get(
+    "/reports/performance",
+    response_model=PerformanceReport,
+    tags=["reports"],
+    summary="Return measured API benchmark results or an explicit not-measured state",
+)
+def performance_report(
+    _: User = Depends(require_roles(*AUDIT_READERS)),
+) -> PerformanceReport:
+    report = _read_report(settings.api_performance_report_path, "API performance")
+    if report is None:
+        return PerformanceReport(
+            status="not_measured",
+            measured=False,
+            average_response_ms=None,
+            median_response_ms=None,
+            p95_response_ms=None,
+            maximum_response_ms=None,
+            slowest_endpoint=None,
+            total_tested_requests=None,
+            successful_request_percent=None,
+            last_tested_at=None,
+            status_distribution=None,
+        )
+    return PerformanceReport(
+        status=str(report.get("status", "unknown")),
+        measured=True,
+        average_response_ms=report.get("average_response_ms"),
+        median_response_ms=report.get("median_response_ms"),
+        p95_response_ms=report.get("p95_response_ms"),
+        maximum_response_ms=report.get("maximum_response_ms"),
+        slowest_endpoint=report.get("slowest_endpoint"),
+        total_tested_requests=report.get("total_tested_requests"),
+        successful_request_percent=report.get("successful_request_percent"),
+        last_tested_at=_report_datetime(report.get("completed_at")),
+        status_distribution=report.get("status_distribution"),
+    )

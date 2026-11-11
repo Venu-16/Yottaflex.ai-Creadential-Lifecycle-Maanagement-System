@@ -18,6 +18,7 @@ const navigation = [
   { to: "/revocations", label: "Revocations", icon: FileCheck2, roles: ["ACADEMIC_ADMINISTRATOR"] },
   { to: "/audit", label: "Audit history", icon: Activity, roles: academicRoles },
   { to: "/reports", label: "Reports", icon: FileText, roles: academicRoles },
+  { to: "/analytics", label: "Data & analytics", icon: Activity, roles: academicRoles },
 ];
 
 export default function AppLayout() {

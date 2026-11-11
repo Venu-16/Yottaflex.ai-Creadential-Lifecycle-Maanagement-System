@@ -1,0 +1,189 @@
+{
+  "actual_row_counts": {
+    "assessment_attempts": 137909,
+    "audit_events": 10505,
+    "completion_records": 109920,
+    "courses": 1000,
+    "credential_awards": 10000,
+    "credential_rule_versions": 1000,
+    "credential_rules": 100,
+    "credential_scopes": 1000,
+    "credentials": 10000,
+    "eligibility_decisions": 109920,
+    "eligibility_evidence": 201686,
+    "eligibility_reasons": 109920,
+    "enrollments": 109920,
+    "idempotency_records": 0,
+    "issuer_signing_keys": 10,
+    "issuers": 10,
+    "learners": 20000,
+    "revocations": 500,
+    "roles": 0,
+    "rule_courses": 1000,
+    "user_roles": 0,
+    "users": 0,
+    "verification_requests": 5000
+  },
+  "checks": [
+    {
+      "details": "expected table counts from manifest; actual={'assessment_attempts': 137909, 'audit_events': 10505, 'completion_records': 109920, 'courses': 1000, 'credential_awards': 10000, 'credential_rule_versions': 1000, 'credential_rules': 100, 'credential_scopes': 1000, 'credentials': 10000, 'eligibility_decisions': 109920, 'eligibility_evidence': 201686, 'eligibility_reasons': 109920, 'enrollments': 109920, 'idempotency_records': 0, 'issuer_signing_keys': 10, 'issuers': 10, 'learners': 20000, 'revocations': 500, 'roles': 0, 'rule_courses': 1000, 'user_roles': 0, 'users': 0, 'verification_requests': 5000}",
+      "name": "row_counts_match_manifest",
+      "passed": true
+    },
+    {
+      "details": "learners=20000/20000, courses=1000/1000, credential_rules=100/100, issuers=10/10, credentials=10000/10000, verification_requests=5000/5000",
+      "name": "required_entity_target_counts",
+      "passed": true
+    },
+    {
+      "details": "eligible_decisions=10000; expected_revocations=500; expected_audit_events=10505",
+      "name": "arithmetic_reconciliation",
+      "passed": true
+    },
+    {
+      "details": "duplicate primary keys: none",
+      "name": "primary_key_uniqueness",
+      "passed": true
+    },
+    {
+      "details": "duplicates: none",
+      "name": "unique_constraints_and_indexes",
+      "passed": true
+    },
+    {
+      "details": "no orphan references",
+      "name": "foreign_key_integrity",
+      "passed": true
+    },
+    {
+      "details": "valid",
+      "name": "business_identifier_formats_and_uniqueness",
+      "passed": true
+    },
+    {
+      "details": "valid",
+      "name": "allowed_enum_values",
+      "passed": true
+    },
+    {
+      "details": "completion=0; attempts=0; verification=0",
+      "name": "date_ordering",
+      "passed": true
+    },
+    {
+      "details": "one award slot per learner and credential scope",
+      "name": "credential_award_uniqueness",
+      "passed": true
+    },
+    {
+      "details": "invalid_issuances=0; ineligible=0",
+      "name": "credential_issuance_eligibility_and_completion_order",
+      "passed": true
+    },
+    {
+      "details": "digest mismatches: none",
+      "name": "eligibility_evidence_snapshot_digests",
+      "passed": true
+    },
+    {
+      "details": "mismatches: none",
+      "name": "eligibility_outcomes_derived_from_source_evidence",
+      "passed": true
+    },
+    {
+      "details": "at least one completion retains multiple distinct attempts",
+      "name": "assessment_attempt_history",
+      "passed": true
+    },
+    {
+      "details": "invalid scores=0",
+      "name": "assessment_score_boundaries",
+      "passed": true
+    },
+    {
+      "details": "fingerprint mismatches: none",
+      "name": "issuer_key_public_material_fingerprints",
+      "passed": true
+    },
+    {
+      "details": "invalid credentials: none",
+      "name": "credential_digest_and_ed25519_signatures",
+      "passed": true
+    },
+    {
+      "details": "revocations before issuance=0",
+      "name": "revocation_consistency",
+      "passed": true
+    },
+    {
+      "details": "verification lifecycle mismatches=0",
+      "name": "verification_lifecycle_outcomes",
+      "passed": true
+    },
+    {
+      "details": "seed_data.jsonl.gz",
+      "name": "seed_data_file_checksum",
+      "passed": true
+    },
+    {
+      "details": "table checksum manifest matches exported rows",
+      "name": "deterministic_table_export_checksums",
+      "passed": true
+    },
+    {
+      "details": "ground truth and fixtures are outside operational tables",
+      "name": "ground_truth_separate_and_checksummed",
+      "passed": true
+    },
+    {
+      "details": "source_manifest.json",
+      "name": "source_manifest_checksum",
+      "passed": true
+    },
+    {
+      "details": "no external datasets are used",
+      "name": "synthetic_only_provenance",
+      "passed": true
+    },
+    {
+      "details": "mismatches: backend/migrations/versions/af6e5dad6637_create_credential_domain_schema.py",
+      "name": "source_file_hashes_match",
+      "passed": false
+    },
+    {
+      "details": "json=235346; csv=235346; manifest=235346",
+      "name": "ground_truth_json_csv_reconciliation",
+      "passed": true
+    },
+    {
+      "details": "{\"altered_payload_hash_not_detected\": true, \"credential_issued_before_completion\": true, \"duplicate_credential_id_attempt\": true, \"ineligible_issuance_attempt\": true, \"invalid_signature\": true, \"revoked_credential_verifies_as_active\": true}",
+      "name": "isolated_anomaly_fixtures",
+      "passed": true
+    },
+    {
+      "details": "missing labels: ",
+      "name": "ground_truth_label_coverage",
+      "passed": true
+    },
+    {
+      "details": "savepoint rejected duplicate external ID using production constraint; constraint=uq_credentials_external_id",
+      "name": "duplicate_credential_id_constraint_fixture",
+      "passed": true
+    },
+    {
+      "details": "seed=20261022",
+      "name": "fixed_seed",
+      "passed": true
+    }
+  ],
+  "completed_at": "2026-11-11T11:25:08.050588+00:00",
+  "dataset": "synthetic",
+  "duration_seconds": 16.682,
+  "failed_checks": [
+    "source_file_hashes_match"
+  ],
+  "profile": "full",
+  "seed": 20261022,
+  "started_at": "2026-11-11T11:24:51.368762+00:00",
+  "status": "failed"
+}

@@ -3,6 +3,7 @@ import AppLayout from "./components/layout/AppLayout.jsx";
 import ProtectedRoute from "./components/common/ProtectedRoute.jsx";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import Dashboard from "./pages/dashboard/Dashboard.jsx";
+import Analytics from "./pages/analytics/Analytics.jsx";
 import Login from "./pages/auth/Login.jsx";
 import Verification from "./pages/verification/Verification.jsx";
 import Workspace from "./pages/Workspace.jsx";
@@ -35,6 +36,7 @@ function ApplicationRoutes() {
             <Route path="eligibility" element={<Workspace page="eligibility" />} />
             <Route path="audit" element={<Workspace page="audit" />} />
             <Route path="reports" element={<Workspace page="reports" />} />
+            <Route path="analytics" element={<Analytics />} />
           </Route>
           <Route element={<ProtectedRoute roles={CREDENTIAL_READERS} />}>
             <Route path="credentials" element={<Workspace page="credentials" />} />

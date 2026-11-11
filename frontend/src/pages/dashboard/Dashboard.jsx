@@ -63,10 +63,11 @@ export default function Dashboard() {
             <Card className="bg-[#f7f6f1]">
               <div className="grid size-10 place-items-center rounded-xl bg-white text-sage-800"><Users size={20} /></div>
               <h2 className="mt-5 font-semibold text-ink">Academic records</h2>
-              <p className="mt-2 text-sm leading-6 text-muted">The API does not expose aggregate learner or course totals yet. Open the directories to browse the available records.</p>
+              <p className="mt-2 text-sm leading-6 text-muted">Open Data &amp; analytics for database-backed learner, course, lifecycle, verification, quality, and measured performance summaries.</p>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Link to="/learners" className="inline-flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-medium text-ink hover:border-sage-300"><Users size={15} />Learners</Link>
                 <Link to="/courses" className="inline-flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-medium text-ink hover:border-sage-300"><BookOpen size={15} />Courses</Link>
+                <Link to="/analytics" className="inline-flex items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-medium text-ink hover:border-sage-300"><Activity size={15} />Analytics</Link>
               </div>
             </Card>
           </div>

@@ -42,6 +42,16 @@ own account. Third-party verification is anonymous and reveals no learner
 name or assessment evidence. These are implementation assumptions, not
 approved permissions.
 
+The learner self-credential query is filtered by the authenticated user's
+linked learner profile. There is no `/users/{id}` lookup or account mutation
+route; `/auth/me` returns only the caller's profile. Anonymous requests to
+protected routes return `401`; authenticated callers without the required role
+receive `403`. These checks do not establish instructor-scoped data access:
+Instructor and Support Staff operational routes are denied under IA-16, and
+any future permission expansion requires an approved scope policy. Public
+verification remains intentionally unauthenticated and returns minimized
+verification metadata rather than learner or assessment details.
+
 ## Endpoint groups
 
 All list routes accept bounded `limit` and `offset` where applicable. Mutations

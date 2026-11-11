@@ -291,6 +291,119 @@ class ReportSummary(BaseModel):
     total_verifications: int
 
 
+class AnalyticsRate(BaseModel):
+    percent: float | None
+    numerator: int
+    denominator: int
+    definition: str
+
+
+class AnalyticsOverview(BaseModel):
+    as_of: datetime
+    total_learners: int
+    total_courses: int
+    total_enrollments: int
+    total_completed_records: int
+    total_eligible_learners: int
+    total_credentials_issued: int
+    total_revoked_credentials: int
+    total_verification_requests: int
+    credential_issuance_rate: AnalyticsRate
+    revocation_rate: AnalyticsRate
+    verification_success_rate: AnalyticsRate
+    completion_rate: AnalyticsRate
+
+
+class AnalyticsBucket(BaseModel):
+    key: str
+    count: int
+
+
+class AnalyticsTimeBucket(BaseModel):
+    period: str
+    outcome: str | None = None
+    count: int
+
+
+class CredentialLifecycleAnalytics(BaseModel):
+    as_of: datetime
+    credential_status: list[AnalyticsBucket]
+    issuance_over_time: list[AnalyticsTimeBucket]
+    revocations_over_time: list[AnalyticsTimeBucket]
+    eligibility_outcomes: list[AnalyticsBucket]
+
+
+class VerificationAnalytics(BaseModel):
+    as_of: datetime
+    total_requests: int
+    outcome_counts: list[AnalyticsBucket]
+    mode_counts: list[AnalyticsBucket]
+    outcomes_over_time: list[AnalyticsTimeBucket]
+
+
+class CourseAnalytics(BaseModel):
+    course_id: UUID
+    course_code: str
+    title: str
+    enrolled_learners: int
+    completed_records: int
+
+
+class AssessmentScoreBucket(BaseModel):
+    score_scale: str
+    range: str
+    count: int
+
+
+class AcademicAnalytics(BaseModel):
+    as_of: datetime
+    course_distribution: list[CourseAnalytics]
+    assessment_score_distribution: list[AssessmentScoreBucket]
+    eligibility_outcomes: list[AnalyticsBucket]
+
+
+class DatasetRowCount(BaseModel):
+    table: str
+    expected: int
+    imported: int | None
+    current: int
+    matches: bool | None
+
+
+class DatasetCheck(BaseModel):
+    name: str
+    passed: bool
+    details: str | None = None
+
+
+class DataQualityReport(BaseModel):
+    status: str
+    seed: int | None
+    generation_timestamp: datetime | None
+    dataset_sha256: str | None
+    total_expected_rows: int | None
+    total_imported_rows: int | None
+    missing_reference_count: int | None
+    last_successful_validation_at: datetime | None
+    row_counts: list[DatasetRowCount]
+    checks: list[DatasetCheck]
+    warnings: list[str]
+
+
+class PerformanceReport(BaseModel):
+    status: str
+    measured: bool
+    average_response_ms: float | None
+    median_response_ms: float | None
+    p95_response_ms: float | None
+    maximum_response_ms: float | None
+    slowest_endpoint: str | None
+    total_tested_requests: int | None
+    successful_request_percent: float | None
+    last_tested_at: datetime | None
+    status_distribution: dict[str, int] | None
+
+
 class PaginatedResponse(BaseModel):
     items: list[Any]
     limit: int

@@ -1,6 +1,6 @@
 # System Architecture Proposal — Phase 2
 
-**Status: IN REVIEW — proposal only; pending user approval.** This document describes a recommended design, not implemented behavior or approved business decisions. The binding requirements remain [the original problem statement](original-problem-statement.md). Nothing here creates a schema, API, security guarantee, or change to the scaffold.
+**Status: APPROVED IMPLEMENTATION BASELINE (2026-11-11).** The user directed the project to use this architecture and the original problem statement as the source of truth. This approval does not settle every business/security choice in Section 11; time-boxed defaults are recorded separately as implementation assumptions in [DECISIONS.md](DECISIONS.md), not as user approvals.
 
 ## 1. Architecture overview
 
@@ -607,7 +607,7 @@ The lifecycle state diagram is in [Section 4.5](#45-state-diagram). Verification
 
 ## 11. Unresolved business and architecture decisions
 
-Every recommendation below is **PENDING USER APPROVAL**. Recommendations are not decisions. The complete decision register and status are also recorded in [DECISIONS.md](DECISIONS.md).
+The modular-monolith architecture baseline is approved. Business/security recommendations below remain **PENDING USER APPROVAL** unless separately recorded. Time-boxed implementation assumptions are in [DECISIONS.md](DECISIONS.md) and are not user-approved policy.
 
 ### 11.1 Required decisions (minimum set)
 
@@ -626,7 +626,7 @@ Every recommendation below is **PENDING USER APPROVAL**. Recommendations are not
 
 | ID / topic | Unresolved choices and consequence | Recommendation | Status |
 |---|---|---|---|
-| ARCH-00 — Architecture and deployment style | A modular monolith keeps the hackathon deployment and transaction boundaries simple but requires clear module boundaries; microservices offer independent scaling/deployment but add service, data-consistency, and operational complexity without a demonstrated need. | Use a modular monolith with explicit internal interfaces and one PostgreSQL transaction boundary; revisit service extraction only if measured requirements justify it. | **PENDING USER APPROVAL** |
+| ARCH-00 — Architecture and deployment style | A modular monolith keeps the hackathon deployment and transaction boundaries simple; microservices add operational and consistency overhead without a demonstrated need. | Use a modular monolith with explicit internal interfaces and one PostgreSQL transaction boundary. | **APPROVED BASELINE (2026-11-11)** |
 | ARCH-09 — Actor permission matrix | Exact read/write/issue/revoke/export permissions and object scopes for all six actors are unspecified; wrong assumptions can expose records or block workflows. | Approve a route/action × actor matrix before implementing RBAC. | **PENDING USER APPROVAL** |
 | ARCH-10 — Learner identity and data | Account relationship, PII fields, uniqueness fields beyond the stipulated ID, retention, and self-service access are unspecified. | Preserve `LRN-000001`; allow duplicate names and minimize PII. Confirm account linkage, identity attributes, and lawful handling. | **PENDING USER APPROVAL** |
 | ARCH-11 — Issuer model and changes | Issuer ownership, multiple issuers, issuer changes, historical issuer attribution and key ownership are unspecified. | Version issuer/key references; bind each key to stable issuer identity; never rewrite issuer on historical signed credential. Confirm issuer-change semantics. | **PENDING USER APPROVAL** |
@@ -656,10 +656,10 @@ Every recommendation below is **PENDING USER APPROVAL**. Recommendations are not
 | ARCH-35 — Issuance uniqueness and retries | Unique credential ID alone does not prevent duplicate business awards; uniqueness based on decision/rule snapshot IDs can be bypassed by reevaluation; idempotency keys can be changed or reused with a different body. | Enforce global credential-ID uniqueness plus normal business uniqueness by learner + credential scope (and only an explicitly approved repeatable award-cycle dimension), independent of eligibility-decision/rule-version IDs and issuer. Atomically allocate the preserved CRD sequence; same principal/operation/key + same request replays one result; same key/different request conflicts. Treat replacement/reissue as a separate explicitly approved, linked exception. | **PENDING USER APPROVAL** |
 ## 12. Current scaffold versus proposal
 
-**Verified actual repository:** React/Vite + FastAPI + PostgreSQL via Compose; empty `/api/v1` router; `GET /health`; settings, SQLAlchemy engine/session, empty declarative base, Alembic environment with no revisions; one health test; minimal landing page; no domain models, tables, auth, APIs, signing keys, data generator, or production controls. The architecture above is not implemented.
+**Verified actual repository:** React/Vite + FastAPI + PostgreSQL via Compose; `/api/v1` business endpoints remain absent; `GET /health`; SQLAlchemy domain metadata and an initial Alembic migration now define 23 MVP tables. The migration was upgraded/downgraded against a disposable PostgreSQL 17 instance. No authentication workflow, credential lifecycle APIs, signing-key custody, data generator, or production controls are implemented.
 
 The evaluated proposed stack matches the existing scaffold and original required technologies. `python-jose[cryptography]` is listed for future JWT use; no password-hashing policy, dedicated signing-key management, or separate signature service/library is implemented. No packages, configuration, endpoints, tables, or code are changed as part of this design phase.
 
 ## 13. Recommended next step
 
-Review and approve/reject the recommendations in Section 11, prioritizing credential scope, eligibility/assessment semantics, issuer authority, disclosure, revocation, cryptography/key trust, and authentication/actor permissions. Record explicit approvals in [DECISIONS.md](DECISIONS.md). Only then proceed to the next approved implementation task. Phase 2 remains **IN REVIEW** until the user accepts or revises this proposal; no implementation is authorized by the proposal itself.
+Implement the time-boxed assumptions in [DECISIONS.md](DECISIONS.md) without presenting them as user-approved business policy. Keep permissions deny-by-default, enforce integrity in PostgreSQL and transaction boundaries, and revisit assumptions that materially change before shipping. The architecture baseline is approved; business and security refinements remain open.

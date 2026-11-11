@@ -21,3 +21,6 @@ postgres_data/
 *.temp
 tmp/
 temp/
+data/generated/seed_data.jsonl.gz
+data/ground_truth/ground_truth.csv
+data/ground_truth/ground_truth.json

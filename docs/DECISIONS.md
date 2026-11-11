@@ -18,20 +18,44 @@ These requirements are binding regardless of whether an implementation decision 
 
 ## Approved decisions
 
-**No project-specific architecture or business decisions are recorded as approved** in the inspected repository or available handover record.
+The user explicitly directed on 2026-11-11 to use the existing architecture and original problem statement as the implementation baseline. The modular-monolith architecture and required technology stack are therefore the approved project baseline. This does **not** approve every business recommendation in `system-architecture.md`; unresolved semantics below are implementation assumptions only and remain subject to later user review.
 
 The listed stack, actor names, entities, volumes, seed, anomaly scenarios, deliverables, and acceptance criteria are user-mandated requirements; they are not inferred approvals of unprovided implementation details.
 
-## Proposed architecture direction (not approved)
+## Approved architecture baseline
 
-These are planning proposals only, not decisions:
+The following baseline is approved by the user's 2026-11-11 instruction:
 
-1. Retain the existing modular FastAPI, versioned API, SQLAlchemy/Alembic, React/Vite, and Docker Compose scaffold, since it matches the required stack.
-2. Keep the mandatory entities as the domain vocabulary and introduce supporting entities only when relationships or workflows justify them.
-3. Treat generation, ground truth, validation, and reproducibility as explicit data-pipeline components rather than mixing ground-truth labels into application decision logic or features.
-4. Trace each acceptance criterion to implementation and automated verification before declaring completion.
+1. Use the existing modular-monolith architecture and scaffold as the implementation baseline.
+2. Preserve all requirements in the original problem statement.
+3. Keep ground truth separate from application inputs and decision logic.
+4. Trace acceptance criteria to implementation and automated verification.
 
-No cryptographic algorithm/key scheme, auth provider, role-permission matrix, database relationship design, audit immutability mechanism, generator format, or rule DSL is proposed as finalized here.
+Unresolved business/security choices below are not silently approved by this baseline.
+
+## Time-boxed implementation assumptions (not user approvals)
+
+To keep delivery moving, use these conservative defaults until the user changes them. They are implementation assumptions, not approved business policy, and must not be described as user-approved decisions.
+
+| ID | Implementation assumption | Scope and safety rationale |
+|---|---|---|
+| IA-01 | First demonstrable credential scope is an individual course; retain an extensible scope reference and defer program awards. | Minimizes MVP scope while preserving original course requirements. |
+| IA-02 | Credential rules are immutable, versioned, and data-configurable; score thresholds are explicit per rule and scale. | Avoids hidden hard-coded eligibility semantics. Do not invent a universal passing score. |
+| IA-03 | When a rule uses attempts, select the latest graded, non-superseded attempt for that assessment; deterministic ordering is `(graded_at, attempt_number, id)`. | Avoids selecting a learner's best result after a later failure. The selected policy is snapshotted per evaluation. |
+| IA-04 | Only an authorized Academic Administrator may initiate issuance in the MVP; evaluate eligibility before the request and re-check in the issuance transaction. | Conservative manual authority; role grant is seeded/configured, not self-assigned. |
+| IA-05 | Public verification returns authenticity/trust and lifecycle outcomes with minimal issuer/course data; no learner name or assessment data. | Data minimization; caller authentication/disclosure policy remains an open product decision. |
+| IA-06 | Revocation is terminal for an issued credential. A replacement is a new credential in the same award lineage, requires predecessor revocation and a distinct ID, and cannot create a second award slot. | Preserves history and prevents duplicate awards. Reinstatement is not supported in the MVP. |
+| IA-07 | Use SHA-256 over canonical payload bytes plus an Ed25519 signature; require 32-byte public keys and 64-byte signatures; keep private keys outside PostgreSQL and frontend assets. | Provides compact issuer authentication and tamper detection using the existing cryptography-enabled dependency; key custody remains deployment-specific. |
+| IA-08 | Use internal UUID keys plus the stipulated external ID formats. `CRD-YYYY-NNNNNN` uses the UTC issuance year and an atomic per-year sequence; learner/verification counters are globally allocated and never recycled. | Preserves formats and prevents race-prone `MAX(id)+1` allocation. |
+| IA-09 | One immutable credential award slot exists per learner and course scope. Replacement credentials belong to that slot, reference the immediate predecessor, and each predecessor has at most one successor. | Uniqueness is independent of evaluation/rule snapshots, issuer, and idempotency key. |
+| IA-10 | Preserve the evaluated rule version, evaluator version, selected evidence IDs, and a canonical evidence snapshot/digest with each decision. | Enables reproducible investigation even after source records are corrected. |
+| IA-11 | Issuer identity is stable. Profile changes create append-only audit snapshots containing the prior and new public profile; credential payload preserves the issuance-time issuer name/code. | Satisfies issuer-change traceability without mutating historical credential attribution. |
+| IA-12 | Use database checks/unique/FK constraints for single-row invariants; enforce cross-row invariants in one transaction with row locks and test concurrent conflicts. | PostgreSQL `CHECK` constraints cannot safely enforce conditions across rows. |
+| IA-13 | Audit events are append-only by application convention and database privileges; do not claim cryptographic immutability or non-repudiation. | Practical MVP assurance; stronger tamper-evidence is deferred. |
+| IA-14 | Omit program, trusted timestamp-evidence, and external authentication-provider tables from the first schema; add them only when their features are approved. | Avoids unused conditional structures and speculative migrations. |
+| IA-15 | Synthetic seed generation uses a required-volume `full` profile, a smaller `starter` profile, deterministic test-only identities and keys, and separate ground-truth exports. Synthetic thresholds, status distributions, revocation rates, and issuer changes are fixture parameters, not production policy. | Makes the mandated data and anomaly checks repeatable without turning test distributions into approved business rules. Test private keys derived from the public seed are never suitable for real credentials. |
+
+These assumptions may be changed after review. Changing an assumption that affects stored data requires a migration and must preserve existing history.
 
 ## Unresolved decisions requiring clarification
 
@@ -74,17 +98,17 @@ Add decisions below only after explicit approval. Include date, decision, ration
 
 | Date | ID | Decision | Status | Rationale / trade-off |
 |---|---|---|---|---|
-| — | — | No approved project-specific decision recorded. | — | — |
+| 2026-11-11 | ARCH-BASELINE | Use the existing modular-monolith architecture and original requirements as the implementation baseline. | **APPROVED BY USER** | User direction: proceed using the existing approved architecture; use conservative documented assumptions for unresolved choices. This does not approve each business/security assumption. |
 
-## Phase 2 architecture proposal register — pending approval
+## Architecture and business decision register
 
-The proposal is documented in [system-architecture.md](system-architecture.md). Each recommendation remains **PENDING USER APPROVAL** and is not an approved decision. The architecture document describes options, consequences, recommendations, component boundaries, workflows, API groups, lifecycle, security, audit, risks, and diagrams. No recommendation authorizes implementation by itself.
+The baseline architecture is approved as above. Business/security recommendations in [system-architecture.md](system-architecture.md) remain **PENDING USER APPROVAL** unless separately recorded. Time-boxed defaults are implementation assumptions IA-01–IA-14, not user approval.
 
 The stipulated external identifier formats `LRN-000001` and `CRD-2026-000001` are requirements to preserve, not pending decisions. ARCH-30 tracks only their unresolved year/sequence allocation, padding/overflow, and other entity-format details.
 
 | ID | Topic | Status |
 |---|---|---|
-| ARCH-00 | Architecture/deployment style: modular monolith versus microservices | **PENDING USER APPROVAL** |
+| ARCH-00 | Architecture/deployment style: modular monolith versus microservices | **APPROVED BASELINE: modular monolith** |
 | ARCH-01 | Credential scope: individual course, program, or both | **PENDING USER APPROVAL** |
 | ARCH-02 | Eligibility policy: fixed thresholds, configurable versioned rules, or hybrid | **PENDING USER APPROVAL** |
 | ARCH-03 | Assessment attempt selection: latest, highest, any passing, or configurable | **PENDING USER APPROVAL** |

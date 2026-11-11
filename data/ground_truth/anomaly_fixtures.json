@@ -1,0 +1,86 @@
+{
+  "dataset": "synthetic",
+  "fixture_checks": {
+    "altered_payload_hash_not_detected": true,
+    "credential_issued_before_completion": true,
+    "duplicate_credential_id_attempt": true,
+    "ineligible_issuance_attempt": true,
+    "invalid_signature": true,
+    "revoked_credential_verifies_as_active": true
+  },
+  "fixtures": [
+    {
+      "baseline_record_id": "13e9affe-3d10-5dce-95dd-2120e5ba05cd",
+      "candidate": {
+        "decision_id": "13e9affe-3d10-5dce-95dd-2120e5ba05cd",
+        "decision_outcome": "ineligible",
+        "proposed_credential_id": "CRD-2026-999999"
+      },
+      "expected_detection": "issuance requires an eligible decision",
+      "production_database_write": false,
+      "scenario": "ineligible_issuance_attempt",
+      "synthetic": true
+    },
+    {
+      "baseline_record_id": "7fe73e71-b4fc-5471-9602-2bd4b67fade9",
+      "candidate": {
+        "completed_at": "2025-01-11T00:00:00+00:00",
+        "credential_id": "CRD-2026-000001",
+        "issued_at": "2025-01-10T00:00:00+00:00"
+      },
+      "expected_detection": "issued_at precedes completed_at",
+      "production_database_write": false,
+      "scenario": "credential_issued_before_completion",
+      "synthetic": true
+    },
+    {
+      "baseline_record_id": "7fe73e71-b4fc-5471-9602-2bd4b67fade9",
+      "candidate": {
+        "candidate_internal_id": "fd1e6bbd-2260-5503-9791-12800319dec9",
+        "credential_id": "CRD-2026-000001"
+      },
+      "expected_detection": "unique credential_id constraint collision",
+      "production_database_write": false,
+      "scenario": "duplicate_credential_id_attempt",
+      "synthetic": true
+    },
+    {
+      "baseline_record_id": "7fe73e71-b4fc-5471-9602-2bd4b67fade9",
+      "candidate": {
+        "credential_id": "CRD-2026-000001",
+        "effective_at": "2026-03-02T00:00:00+00:00",
+        "faulty_lifecycle_result": "active",
+        "requested_at": "2026-10-01T00:00:00+00:00"
+      },
+      "expected_detection": "expected lifecycle is revoked",
+      "production_database_write": false,
+      "scenario": "revoked_credential_verifies_as_active",
+      "synthetic": true
+    },
+    {
+      "baseline_record_id": "7fe73e71-b4fc-5471-9602-2bd4b67fade9",
+      "candidate": {
+        "faulty_integrity_result": "valid",
+        "payload_base64": "eyJjb21wbGV0aW9uIjp7ImNvbXBsZXRlZF9hdCI6IjIwMjUtMDEtMTFUMDA6MDA6MDArMDA6MDAiLCJzY29yZSI6IjkwLjAwMDAifSwiY291cnNlX2NvZGUiOiJDUlMtMDAwMSIsImNyZWRlbnRpYWxfaWQiOiJDUkQtMjAyNi0wMDAwMDEiLCJpc3N1ZWRfYXQiOiIyMDI2LTAxLTAxVDAwOjAwOjAwKzAwOjAwIiwiaXNzdWVyIjp7Imlzc3Vlcl9jb2RlIjoiSVNTLTAwMSIsImlzc3Vlcl9uYW1lIjoiU3ludGhldGljIElzc3VlciAwMDEgSW5zdGl0dXRlIn0sImxlYXJuZXJfaWQiOiJMUk4tMDAwMDAxIiwicGF5bG9hZF92ZXJzaW9uIjoiY3JlZGVudGlhbC12MSIsInJ1bGVfdmVyc2lvbiI6Ijg5NzE4NDEzLTM2ZWMtNWFjMS04MTI2LTc0MjBlMjNlMmJiNCIsInN5bnRoZXRpYyI6dHJ1WH0=",
+        "stored_sha256_base64": "yqj8l48mFIfAyqPuSQf1ty8G1iGLaJnX0z70yZsMpYA="
+      },
+      "expected_detection": "SHA-256 of altered payload differs from stored digest",
+      "production_database_write": false,
+      "scenario": "altered_payload_hash_not_detected",
+      "synthetic": true
+    },
+    {
+      "baseline_record_id": "7fe73e71-b4fc-5471-9602-2bd4b67fade9",
+      "candidate": {
+        "payload_base64": "eyJjb21wbGV0aW9uIjp7ImNvbXBsZXRlZF9hdCI6IjIwMjUtMDEtMTFUMDA6MDA6MDArMDA6MDAiLCJzY29yZSI6IjkwLjAwMDAifSwiY291cnNlX2NvZGUiOiJDUlMtMDAwMSIsImNyZWRlbnRpYWxfaWQiOiJDUkQtMjAyNi0wMDAwMDEiLCJpc3N1ZWRfYXQiOiIyMDI2LTAxLTAxVDAwOjAwOjAwKzAwOjAwIiwiaXNzdWVyIjp7Imlzc3Vlcl9jb2RlIjoiSVNTLTAwMSIsImlzc3Vlcl9uYW1lIjoiU3ludGhldGljIElzc3VlciAwMDEgSW5zdGl0dXRlIn0sImxlYXJuZXJfaWQiOiJMUk4tMDAwMDAxIiwicGF5bG9hZF92ZXJzaW9uIjoiY3JlZGVudGlhbC12MSIsInJ1bGVfdmVyc2lvbiI6Ijg5NzE4NDEzLTM2ZWMtNWFjMS04MTI2LTc0MjBlMjNlMmJiNCIsInN5bnRoZXRpYyI6dHJ1ZX0=",
+        "public_key_base64": "ocTVom7mpUw4MTXjOVJ12nm3Gu2QqcsBsxfOS7hog+E=",
+        "signature_base64": "iTB7dqYJ2+jEgM7O4kZMitGIdzeOloI7WTIdcMTnIjETFu4KGW6APWCI31bnp9Esmxcb1i16spMF68hMq+zABw=="
+      },
+      "expected_detection": "Ed25519 verification rejects the mutated signature",
+      "production_database_write": false,
+      "scenario": "invalid_signature",
+      "synthetic": true
+    }
+  ],
+  "production_database_mutated": false
+}

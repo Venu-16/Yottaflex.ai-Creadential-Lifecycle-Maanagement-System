@@ -47,17 +47,19 @@ The required stack is:
 
 The stack is a user requirement. Any additional library, service, or substitution needs justification and must not silently weaken an acceptance criterion.
 
-## Actual initial architecture
+## Actual architecture and implementation
 
-- `backend/app/` contains the FastAPI application, versioned API router, settings, an empty SQLAlchemy declarative base, and PostgreSQL engine/session configuration.
-- `backend/migrations/` contains Alembic environment and revision template setup. There are no generated revisions.
-- `backend/tests/` contains one health endpoint test and empty unit, integration, and e2e packages.
+- The modular-monolith architecture baseline is approved by the user's 2026-11-11 direction; conservative business defaults are separately labeled implementation assumptions in `docs/DECISIONS.md`.
+- `backend/app/` contains the FastAPI application, versioned API router, settings, SQLAlchemy PostgreSQL engine/session, and 23 MVP domain tables in `models/domain.py`.
+- `backend/migrations/` contains Alembic revision `af6e5dad6637_create_credential_domain_schema.py`.
+- `backend/scripts/` contains deterministic seed generation, validation, and reproducibility utilities.
+- `backend/tests/` contains the health endpoint test and focused schema/data-generator tests; integration and e2e folders remain placeholders.
 - `frontend/` contains a Vite React app with a minimal landing page, Tailwind setup, an Axios API client, and placeholder UI directories.
-- `data/` contains empty generated, ground-truth, and validation locations; no datasets are present.
+- `data/` contains the full synthetic export, separate ground truth/anomaly fixtures, validation results, and reproducibility report. Two clean full-profile generations matched.
 - `docs/` contains initial architecture, database-design, data-dictionary, business-rules, API documentation, progress, decisions, and original problem statement documents.
 - Root `docker-compose.yml` defines PostgreSQL, backend, and frontend services with PostgreSQL health checking and a named data volume.
 
-This describes the scaffold, not a finalized domain architecture. No database schema, authentication flow, business API, data-generation design, cryptographic method, or audit implementation has been approved.
+The architecture baseline is approved; business services, endpoints, authentication behavior, and production signing-key custody remain unimplemented. Seed data and test-only signing keys are implemented.
 
 ## Actual repository structure
 
@@ -95,7 +97,9 @@ This describes the scaffold, not a finalized domain architecture. No database sc
 │   │   │   ├── base.py
 │   │   │   └── connection.py
 │   │   ├── middleware/__init__.py
-│   │   ├── models/__init__.py
+│   │   ├── models/
+│   │   │   ├── __init__.py
+│   │   │   └── domain.py
 │   │   ├── repositories/__init__.py
 │   │   ├── rules/__init__.py
 │   │   ├── schemas/__init__.py
@@ -104,24 +108,35 @@ This describes the scaffold, not a finalized domain architecture. No database sc
 │   ├── migrations/
 │   │   ├── env.py
 │   │   ├── script.py.mako
-│   │   └── versions/.gitkeep
-│   ├── scripts/.gitkeep
+│   │   └── versions/
+│   │       └── af6e5dad6637_create_credential_domain_schema.py
+│   ├── scripts/
+│   │   ├── check_reproducibility.py
+│   │   ├── generate_seed_data.py
+│   │   ├── seed_data_common.py
+│   │   └── validate_seed_data.py
 │   └── tests/
 │       ├── conftest.py
 │       ├── test_health.py
 │       ├── e2e/__init__.py
 │       ├── integration/__init__.py
-│       └── unit/__init__.py
+│       └── unit/
+│           ├── test_domain_schema.py
+│           └── test_seed_data.py
 ├── data/
 │   ├── README.md
-│   ├── generated/.gitkeep
-│   ├── ground_truth/.gitkeep
-│   └── validation/.gitkeep
+│   ├── generated/ (seed_data.jsonl.gz, manifest.json, source_manifest.json)
+│   ├── ground_truth/ (ground_truth.csv, ground_truth.json, anomaly_fixtures.json)
+│   └── validation/ (validation_summary.json, reproducibility_summary.json)
 ├── docs/
 │   ├── DECISIONS.md
 │   ├── api-documentation.md
 │   ├── architecture.md
 │   ├── business-rules.md
+│   ├── database/
+│   │   ├── data-dictionary.md
+│   │   ├── entity-catalogue.md
+│   │   └── relationship-specification.md
 │   ├── data-dictionary.md
 │   ├── database-design.md
 │   ├── development-progress.md
@@ -168,17 +183,17 @@ This describes the scaffold, not a finalized domain architecture. No database sc
 
 **Phase 1 — Project foundation is complete.** This only means the initial scaffold and basic development setup exist. The product is not feature-complete.
 
-Implemented and verified in the prior initialization task:
+Implemented and verified:
 
 - FastAPI application startup, environment-based settings, CORS, basic logging, and `GET /health`.
-- PostgreSQL SQLAlchemy engine/session configuration and empty declarative metadata base.
-- Alembic environment setup; offline SQL generation produced an empty migration script.
-- One passing backend health test.
+- PostgreSQL SQLAlchemy engine/session configuration, 23-table domain metadata, and Alembic schema migration.
+- Eight backend tests (health, schema, and deterministic data-generator tests).
 - Minimal React landing page, Vite/Tailwind configuration, and Axios client configuration.
 - Docker Compose configuration for PostgreSQL, backend, and frontend.
 - Initial project documentation and environment examples.
+- Fixed-seed, parameterized synthetic data generator; full profile meets required entity volumes, exports separate ground truth and anomaly fixtures, and validates against a disposable PostgreSQL database.
 
-Not implemented: login/JWT flows, roles/permissions, domain models or tables, generated migrations, business endpoints, credential lifecycle logic, synthetic data, anomaly fixtures, data validators, ground truth, or reproducibility tooling.
+Not implemented: login/JWT flows, enforced roles/permissions, business endpoints/services, credential lifecycle operations, and production signing-key custody. User/Role persistence tables exist, but no authentication or authorization behavior is wired.
 
 ## Verified initialization results
 
@@ -201,7 +216,7 @@ These are initialization checks, not tests of business workflows or database sch
 - Pytest emitted a non-blocking Starlette deprecation warning: using `httpx` with `starlette.testclient` is deprecated and suggests `httpx2`. The health test still passed; no dependency change has been approved or made to address it.
 - The scaffold has no real authentication, schema, product API, or domain behavior.
 - `GET /health` checks application-process responsiveness only; it does not check database connectivity.
-- Alembic has no revisions and the metadata has no domain tables.
+- Alembic has initial revision `af6e5dad6637`; 23 MVP tables are defined. The migration has not been applied to a persistent project database.
 - No local `.env` values are committed. Copy the relevant `.env.example` and supply local secrets before running the stack.
 - Initial setup used Python 3.13.2, Node.js 22.12.0, npm 11.0.0, and Docker Compose 5.0.0-desktop.1. Other environments may differ.
 - The scaffold and initial documentation baseline are committed on `main` as `f0b335b22fe9396f5affe5bebca3c76276afce0b`. The configured `origin/main` is unavailable. Check current Git status before assuming subsequent documentation or implementation work is committed.
@@ -210,20 +225,28 @@ These are initialization checks, not tests of business workflows or database sch
 ## Requirements, decisions, and unresolved questions
 
 - **Original requirements:** User-mandated requirements preserved in [docs/original-problem-statement.md](docs/original-problem-statement.md). These are binding, not proposals.
-- **Proposed architecture:** Any suggested design choices recorded as proposals in [docs/DECISIONS.md](docs/DECISIONS.md). They are not approved unless the user approves them.
-- **Approved decisions:** No additional domain or architecture decision has been approved in the available project record. The required technology stack, entity list, data volumes, seed, anomaly scenarios, and acceptance criteria remain requirements.
-- **Unresolved decisions:** Authentication and actor permissions; entity relationships and lifecycle states; rule representation and evaluation semantics; cryptographic method, key custody and verifier trust model; revocation semantics; audit immutability guarantees; data formats and generation strategy; exact data validation and reproducibility manifest formats. Clarify material business/security choices with the user before committing to them.
+- **Approved baseline:** The modular-monolith architecture and original requirements are approved for implementation by the user's 2026-11-11 instruction.
+- **Implementation assumptions:** Time-boxed operational defaults are recorded as IA-01–IA-15 in [docs/DECISIONS.md](docs/DECISIONS.md). They are not user-approved business policy.
+- **Unresolved decisions:** Authentication and actor permissions; entity relationships and lifecycle states; production rule/evaluation semantics; production key custody and verifier trust model; revocation semantics; and audit immutability guarantees. Synthetic-data fixture parameters are documented separately and are not business-policy decisions.
 
 ## Development roadmap
 
-The authoritative 11-phase checklist and phase exit conditions are in [docs/development-progress.md](docs/development-progress.md). Phase 1 is the only completed phase. Phase 2 (system architecture design) is **IN REVIEW**, not completed; Phases 3–11 remain pending. The roadmap must continue to account for every original acceptance criterion, including synthetic-data generation and reproducibility.
+The authoritative 11-phase checklist and phase exit conditions are in [docs/development-progress.md](docs/development-progress.md). Roadmap Phases 1, 2, and 10 are complete; Phase 4 remains in progress. The current task's Phase 5 seed-data increment maps to completed roadmap Phase 10. Roadmap Phase 5 (eligibility-rule definition) remains pending.
 
 ## Phase 2 architecture proposal
 
-[docs/system-architecture.md](docs/system-architecture.md) documents a recommended modular-monolith design, responsibilities and dependencies, nine core workflows, proposed lifecycle states, security guidance, representative versioned REST API groups, anomaly controls, audit/traceability, Mermaid diagrams, and risks/trade-offs. This is a design proposal only: no code, endpoints, database schema, dependencies, keys, or infrastructure were added for it.
+[docs/system-architecture.md](docs/system-architecture.md) documents the approved modular-monolith baseline, responsibilities and dependencies, workflows, lifecycle, security guidance, representative versioned REST API groups, anomaly controls, audit/traceability, Mermaid diagrams, and risks/trade-offs. It does not imply those workflows are implemented.
 
-The recommendations and business choices are **pending user approval** and are separately listed in [docs/DECISIONS.md](docs/DECISIONS.md). No user decision is inferred. The existing required stack aligns with the scaffold; cryptographic algorithm and key trust, authentication/account model, actor permission matrix, verification disclosure, issuance authority, and lifecycle semantics remain unsettled.
+Business/security choices remain unresolved except where an implementation assumption IA-01–IA-14 is recorded. Do not present an assumption as user approval or grant any actor access by inference.
+
+## Phase 4 database design and implementation
+
+[docs/database/entity-catalogue.md](docs/database/entity-catalogue.md), [docs/database/data-dictionary.md](docs/database/data-dictionary.md), and [docs/database/relationship-specification.md](docs/database/relationship-specification.md) contain the logical catalogue, PostgreSQL data dictionary, relationships, and ER diagram. The MVP schema implements 23 tables with `CredentialAward` uniqueness, replacement lineage, evidence snapshots, and issuer/key history. Revision `af6e5dad6637` passed disposable PostgreSQL upgrade/downgrade/re-upgrade and metadata-sync checks. Phase 4 remains in progress; no services/API or authentication behavior is implemented. LRN/CRD/VER formats are preserved and allocation assumptions are recorded.
+
+## Synthetic seed data
+
+The full profile contains 20,000 learners, 1,000 courses, 100 rules, 10 issuers, 10,000 credentials, and 5,000 verification requests, plus dependent lifecycle records. `data/generated/manifest.json` records actual entity counts and checksums; `data/ground_truth/` holds expected outcomes and isolated anomalies. Full PostgreSQL validation passed, including digest/signature checks and a rolled-back duplicate-ID constraint probe. Two clean full runs matched on manifests and validation results; see `data/validation/reproducibility_summary.json`. Large generated payload files are locally available but excluded from Git because they can be recreated deterministically. Follow [docs/database/seed-data-guide.md](docs/database/seed-data-guide.md) for guarded generation and reproducibility commands.
 
 ## Continuation instructions
 
-Read [AI_HANDOVER.md](AI_HANDOVER.md), this file, [docs/DECISIONS.md](docs/DECISIONS.md), [docs/development-progress.md](docs/development-progress.md), and [docs/original-problem-statement.md](docs/original-problem-statement.md) before implementation. Preserve existing working code, inspect the current repository and status, work incrementally, do not repeat Phase 1, and do not implement a future phase prematurely. Ask the user when unresolved business or security requirements materially affect design. Update progress and handover documentation after completing a task. Do not weaken the original requirements without explicit approval and a documented trade-off.
+Read [AI_HANDOVER.md](AI_HANDOVER.md), this file, [docs/DECISIONS.md](docs/DECISIONS.md), [docs/development-progress.md](docs/development-progress.md), and [docs/original-problem-statement.md](docs/original-problem-statement.md) before implementation. Preserve existing work, inspect Git status, proceed using documented assumptions, keep permissions deny-by-default, and do not weaken original requirements. Update progress and handover after each completed task; ask only when the choice is fundamental or creates irreversible data/security risk.

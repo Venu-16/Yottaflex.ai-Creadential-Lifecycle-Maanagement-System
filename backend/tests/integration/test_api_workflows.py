@@ -120,6 +120,11 @@ def test_authentication_and_deny_by_default(
         == 401
     )
     token = authenticate(api_client, principal, password)
+    profile = api_client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert profile.status_code == 200
+    assert profile.json()["roles"] == ["SUPPORT_STAFF"]
     assert api_client.get(
         "/api/v1/learners", headers={"Authorization": f"Bearer {token}"}
     ).status_code == 403

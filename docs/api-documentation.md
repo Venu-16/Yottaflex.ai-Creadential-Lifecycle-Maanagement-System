@@ -25,8 +25,9 @@ The API is at <http://localhost:8000>, Swagger UI at
 `POST /api/v1/auth/login` accepts JSON containing `principal_key` and
 `password`, and returns a short-lived HS256 bearer token. Use that token as
 `Authorization: Bearer <token>`. `GET /api/v1/auth/me` returns the active
-account. Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes, never
-returned by the API.
+account and its currently active role codes in `roles`. Role assignments are
+queried from the database, not inferred from token claims. Passwords are stored
+as salted PBKDF2-HMAC-SHA256 hashes, never returned by the API.
 
 There is deliberately no public user/role administration endpoint. Bootstrap
 local demo accounts using environment variables and `python

@@ -15,17 +15,17 @@ The original problem statement is the source of truth. Do not remove, weaken, si
 ## Handover snapshot
 
 - **Verified roadmap phases:** Phase 1 — project foundation; Phase 2 — approved architecture baseline; Phase 10 — synthetic data, quality, ground truth, and reproducibility.
-- **Current product phase:** Phase 6 — backend business logic and REST API. The initial workflow APIs exist, but Phases 3–9 remain unchecked and incomplete.
-- **Current task:** Phase 6.5 backend testing and hardening pass. The current backend suite passes against a separate, disposable PostgreSQL 17 database; unresolved hardening and product gaps are documented.
+- **Current product phase:** Backend lifecycle APIs plus Phase 7 frontend development/integration. Phases 3–9 and 11 remain unchecked and incomplete.
+- **Current task:** Frontend dashboard and API integration. The production frontend build passed; the backend suite passed 27 tests against a separate temporary PostgreSQL 17 test database. The live browser lifecycle workflow passed against disposable PostgreSQL, including VALID then REVOKED verification.
 - **Implementation state:** FastAPI exposes auth/RBAC, master-data, enrollment/completion/assessment, eligibility, credential issuance, verification, revocation, audit, and reporting routes. SQLAlchemy has 23 MVP tables in `backend/app/models/domain.py`; no migration was added for this task. Seed generation/validation/reproducibility remains complete. Test-only signing material is never reused in the API.
-- **Next step:** Continue remaining lifecycle/security acceptance work before production exposure. Remaining items include an approved actor matrix, object-level scopes, account lifecycle, rate/body-size controls, production key custody, replacement issuance, and database-outage fault injection. Do not mark Phase 3–9 complete or claim production security sign-off.
+- **Next step:** Continue remaining lifecycle/security acceptance work and complete broader original-criteria evaluation. Open items include an approved actor matrix, object-level scopes, account lifecycle, rate/body-size controls, production key custody, replacement issuance, trusted timestamps, and database-outage fault injection. Do not mark Phase 3–9 or 11 complete or claim production security sign-off.
 
 ## Repository facts
 
 - Backend: FastAPI under `backend/app/`; settings in `app/core/config.py`; SQLAlchemy session dependency in `app/database/dependencies.py`; bearer auth/RBAC in `app/core/`; lifecycle services under `app/services/`; OpenAPI request/response models in `app/schemas/api.py`.
 - Alembic uses `backend/migrations/`; revision `af6e5dad6637` creates 23 MVP tables.
 - Backend tests include health, schema, synthetic-data, security unit tests, and PostgreSQL API integration coverage in `backend/tests/integration/test_api_workflows.py` (requires a dedicated empty `API_TEST_DATABASE_URL` with `test` in its database name). See `docs/backend-testing.md`.
-- Frontend: Vite React app in `frontend/src/`; `App.jsx` is a minimal status page; `services/api.js` is only an Axios configuration.
+- Frontend: Vite React app in `frontend/src/`; `App.jsx` configures login, public verification, protected role-gated routes, and shared workspace. The dashboard and workflow pages use the centralized Axios client and actual `/api/v1` endpoints. `GET /auth/me` includes current role codes for UI-only gating.
 - Data: the full synthetic profile is in `data/generated/`; separate ground-truth and anomaly files are in `data/ground_truth/`; validation reports are in `data/validation/`. The detailed runbook is `docs/database/seed-data-guide.md`.
 - Docker Compose defines `db`, `backend`, and `frontend`, uses a PostgreSQL health check and named volume. It has been built and tested locally.
 - Existing setup docs are in `README.md`; detailed context and actual tree are in `PROJECT_CONTEXT.md`.

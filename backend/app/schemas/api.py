@@ -27,6 +27,7 @@ class UserResponse(APIModel):
     principal_key: str
     display_name: str | None
     is_active: bool
+    roles: list[str]
 
 
 class LearnerCreate(BaseModel):

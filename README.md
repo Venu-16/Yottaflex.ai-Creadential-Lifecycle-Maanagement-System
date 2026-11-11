@@ -23,8 +23,9 @@ From the repository root:
 2. Replace `POSTGRES_PASSWORD` and `SECRET_KEY` with local values. Do not commit `.env`.
 3. Run `docker compose up --build -d`.
 4. Apply the database schema with `docker compose run --rm backend alembic upgrade head`.
-5. Open the frontend at <http://localhost:5173> and the health check at <http://localhost:8000/health>.
-6. Stop the services with `docker compose down`. Add `-v` only if you intend to delete the local PostgreSQL data volume.
+5. To provision a local demonstration account, set the `DEMO_USER_*` values in `.env` and run `docker compose run --rm backend python scripts/bootstrap_demo_user.py`. Use a local-only password and do not commit `.env`.
+6. Open the frontend at <http://localhost:5173> and the health check at <http://localhost:8000/health>.
+7. Stop the services with `docker compose down`. Add `-v` only if you intend to delete the local PostgreSQL data volume.
 
 Compose starts PostgreSQL first and waits for its health check before starting the backend. The backend and frontend are reachable by the service names `backend` and `frontend` on the Compose network.
 
@@ -102,6 +103,24 @@ npm run dev
 ```
 
 The Vite development server is available at <http://localhost:5173>. `VITE_API_BASE_URL` configures the API client base URL.
+
+The frontend provides login/session handling, a responsive role-aware academic
+workspace, learner and course catalogues, versioned eligibility rules,
+enrollment/completion/assessment entry, eligibility evaluation, credential
+issuance and revocation, public credential verification, audit history, and
+reports. Navigation uses the assigned roles returned by `GET /api/v1/auth/me`;
+the API remains the authorization boundary. Public verification is available
+without an account.
+
+Dashboard figures and reports are read from reporting endpoints. The API does
+not currently expose aggregate learner or course totals, so the dashboard does
+not fabricate them. Replacement credential issuance, user/role administration,
+instructor object scopes, and production signing-key custody are not implemented.
+
+For frontend changes, run `npm run build` in `frontend/`. The backend regression
+suite is `python -m pytest -q` in `backend/`; PostgreSQL integration cases
+require a separate empty disposable database via `API_TEST_DATABASE_URL` and
+must not use the synthetic dataset.
 
 ## Project layout
 

@@ -54,7 +54,7 @@ The stack is a user requirement. Any additional library, service, or substitutio
 - `backend/migrations/` contains Alembic revision `af6e5dad6637_create_credential_domain_schema.py`.
 - `backend/scripts/` contains deterministic seed generation, validation, and reproducibility utilities.
 - `backend/tests/` contains health, schema, synthetic-data, and PostgreSQL API integration tests. Integration tests require a dedicated empty `API_TEST_DATABASE_URL` with `test` in its database name.
-- `frontend/` contains a Vite React app with a minimal landing page, Tailwind setup, an Axios API client, and placeholder UI directories.
+- `frontend/` contains the Vite/React/Tailwind dashboard, React Router protected routes, bearer-token Axios client, role-aware navigation, workflow pages, and shared UI components. `GET /auth/me` returns active role codes for UI presentation; backend RBAC remains authoritative.
 - `data/` contains the full synthetic export, separate ground truth/anomaly fixtures, validation results, and reproducibility report. Two clean full-profile generations matched.
 - `docs/` contains initial architecture, database-design, data-dictionary, business-rules, API documentation, progress, decisions, and original problem statement documents.
 - Root `docker-compose.yml` defines PostgreSQL, backend, and frontend services with PostgreSQL health checking and a named data volume.
@@ -170,44 +170,36 @@ The architecture baseline is approved. A first backend API/workflow increment is
         ├── main.jsx
         ├── assets/.gitkeep
         ├── components/
-        │   ├── common/.gitkeep
-        │   ├── forms/.gitkeep
+        │   ├── common/{ProtectedRoute.jsx, ui.jsx}
         │   └── layout/AppLayout.jsx
-        ├── context/.gitkeep
-        ├── hooks/.gitkeep
+        ├── context/AuthContext.jsx
+        ├── hooks/useResource.js
         ├── pages/
-        │   ├── audit/.gitkeep
-        │   ├── auth/.gitkeep
-        │   ├── completions/.gitkeep
-        │   ├── courses/.gitkeep
-        │   ├── credential-rules/.gitkeep
-        │   ├── credentials/.gitkeep
-        │   ├── dashboard/.gitkeep
-        │   ├── learners/.gitkeep
-        │   ├── reports/.gitkeep
-        │   ├── revocations/.gitkeep
-        │   └── verification/.gitkeep
-        ├── routes/.gitkeep
-        ├── services/api.js
-        └── utils/.gitkeep
+        │   ├── Workspace.jsx
+        │   ├── auth/Login.jsx
+        │   ├── dashboard/Dashboard.jsx
+        │   └── verification/Verification.jsx
+        └── services/api.js
 ```
 
 ## Current implementation state
 
-**Current implementation is partial; no Phase 3–9 checklist is marked complete.** The current task implements a first end-to-end backend workflow, not a feature-complete or production-ready credential platform.
+**Current implementation is partial; no Phase 3–9 checklist is marked complete and Phase 11 remains in progress.** The backend and frontend implement the current MVP workflows, but the complete original acceptance criteria and production readiness have not been demonstrated.
 
 Implemented and verified:
 
 - FastAPI application startup, environment-based settings, CORS, basic logging, and `GET /health`.
 - PostgreSQL SQLAlchemy engine/session configuration, 23-table domain metadata, and Alembic schema migration.
 - Backend tests for health, schema, deterministic seed generation, authentication/role denial, and a PostgreSQL credential lifecycle workflow.
-- Minimal React landing page, Vite/Tailwind configuration, and Axios client configuration.
+- React/Vite/Tailwind workspace with login/logout, session restoration/expiry handling, protected routes, role-aware navigation, public verification, operational data entry, eligibility evaluation, credential issuance/revocation, audit and reports.
 - Docker Compose configuration for PostgreSQL, backend, and frontend.
 - Initial project documentation and environment examples.
 - Fixed-seed, parameterized synthetic data generator; full profile meets required entity volumes, exports separate ground truth and anomaly fixtures, and validates against a disposable PostgreSQL database.
 - Authenticated APIs for master data, versioned rules, enrollment/completion/assessment, eligibility, issuance, public verification, revocation, audit, and basic reports.
 
-Not implemented or incomplete: production-approved role matrix/object scopes, account and role administration beyond a local bootstrap script, production key custody, issuance replacement, rate limiting, trusted timestamps, broad concurrency/security testing, and complete API acceptance coverage. The application is not production-ready.
+The frontend production build passed after the Phase 7 UI implementation. Backend tests passed 27/27 against a separate temporary PostgreSQL 17 database. A live browser flow against a separate disposable PostgreSQL backend created a learner, course, rule, enrollment, completion, assessment attempt, eligibility decision, credential, and revocation; verification returned VALID before revocation and REVOKED afterwards. Login/logout, role-based navigation and denial, directory updates, reports, audit, and mobile navigation were also exercised. These checks do not constitute a complete original-criteria acceptance review or production sign-off.
+
+Not implemented or incomplete: production-approved role matrix/object scopes, account and role administration beyond a local bootstrap script, production key custody, issuance replacement, rate limiting, trusted timestamps, broad security hardening, and complete original-criteria acceptance coverage. Aggregate learner/course dashboard counts are not exposed by the API and are not fabricated. The application is not production-ready.
 
 ## Verified initialization results
 

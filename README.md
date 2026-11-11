@@ -2,7 +2,7 @@
 
 A web application that issues course credentials only after a learner meets the configured requirements, signs each credential with Ed25519, lets anyone verify a credential without an account, supports revocation, and keeps an audit trail of every decision.
 
-This is a hackathon MVP. It runs locally and has an automated backend test suite. It is not hardened for production; see [Known limitations](#known-limitations).
+This is a hackathon MVP. It runs locally and has an automated backend test suite. It is not hardened for production.
 
 ## Contents
 

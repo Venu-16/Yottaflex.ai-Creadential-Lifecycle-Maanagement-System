@@ -2,10 +2,28 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+
+# Timestamps outside this range are not meaningful for academic records. Values near
+# the limits of the calendar also overflow during time-zone conversion and can be
+# stored by PostgreSQL in a form that Python can no longer read back.
+MIN_SUPPORTED_YEAR = 1900
+MAX_SUPPORTED_YEAR = 2999
+
+
+def _require_supported_year(value: datetime) -> datetime:
+    if not MIN_SUPPORTED_YEAR <= value.year <= MAX_SUPPORTED_YEAR:
+        raise ValueError(
+            f"timestamp year must be between {MIN_SUPPORTED_YEAR} and {MAX_SUPPORTED_YEAR}"
+        )
+    return value
+
+
+# Use for every timestamp accepted from a client. Response models keep plain datetime.
+RequestDatetime = Annotated[datetime, AfterValidator(_require_supported_year)]
 
 
 class APIModel(BaseModel):
@@ -54,16 +72,16 @@ class CourseCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str | None = None
     status: str = "active"
-    effective_from: datetime | None = None
-    effective_to: datetime | None = None
+    effective_from: RequestDatetime | None = None
+    effective_to: RequestDatetime | None = None
 
 
 class CourseUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
     status: str | None = None
-    effective_from: datetime | None = None
-    effective_to: datetime | None = None
+    effective_from: RequestDatetime | None = None
+    effective_to: RequestDatetime | None = None
 
 
 class CourseResponse(APIModel):
@@ -98,8 +116,8 @@ class SigningKeyCreate(BaseModel):
     key_id: str = Field(min_length=1, max_length=128)
     public_key_base64: str
     algorithm: str = "Ed25519"
-    valid_from: datetime
-    valid_until: datetime | None = None
+    valid_from: RequestDatetime
+    valid_until: RequestDatetime | None = None
     supersedes_key_id: UUID | None = None
 
 
@@ -110,14 +128,14 @@ class RuleCreate(BaseModel):
     course_id: UUID
     criteria: dict[str, Any]
     attempt_selection_policy: str | None = "latest_graded"
-    effective_from: datetime
+    effective_from: RequestDatetime
 
 
 class RuleVersionCreate(BaseModel):
     course_id: UUID
     criteria: dict[str, Any]
     attempt_selection_policy: str | None = "latest_graded"
-    effective_from: datetime
+    effective_from: RequestDatetime
 
 
 class RuleResponse(APIModel):
@@ -138,7 +156,7 @@ class RuleResponse(APIModel):
 class EnrollmentCreate(BaseModel):
     learner_id: UUID
     course_id: UUID
-    effective_from: datetime | None = None
+    effective_from: RequestDatetime | None = None
 
 
 class EnrollmentResponse(APIModel):
@@ -154,14 +172,14 @@ class EnrollmentResponse(APIModel):
 class CompletionCreate(BaseModel):
     enrollment_id: UUID
     status: str = "in_progress"
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
+    started_at: RequestDatetime | None = None
+    completed_at: RequestDatetime | None = None
     source_reference: str | None = Field(default=None, max_length=200)
 
 
 class CompletionStatusUpdate(BaseModel):
     status: str
-    completed_at: datetime | None = None
+    completed_at: RequestDatetime | None = None
 
 
 class CompletionResponse(APIModel):
@@ -182,8 +200,8 @@ class AssessmentAttemptCreate(BaseModel):
     score_scale: str | None = "0-100"
     result_code: str | None = Field(default=None, max_length=32)
     status: str = "graded"
-    submitted_at: datetime
-    graded_at: datetime | None = None
+    submitted_at: RequestDatetime
+    graded_at: RequestDatetime | None = None
     supersedes_attempt_id: UUID | None = None
 
 

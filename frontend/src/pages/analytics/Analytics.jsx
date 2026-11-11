@@ -217,10 +217,14 @@ export default function Analytics() {
   const lifecycle = data?.lifecycle;
   const verification = data?.verification;
   const academic = data?.academic;
-  const timeRows = (lifecycle?.issuance_over_time || []).map((row) => ({
-    period: row.period,
-    issued: row.count,
-    revoked: lifecycle?.revocations_over_time?.find((item) => item.period === row.period)?.count || 0,
+  // List every month that has an issuance or a revocation. Revocations can fall in
+  // months without issuances, and those months must not be dropped from the table.
+  const issuedByPeriod = new Map((lifecycle?.issuance_over_time || []).map((row) => [row.period, row.count]));
+  const revokedByPeriod = new Map((lifecycle?.revocations_over_time || []).map((row) => [row.period, row.count]));
+  const timeRows = [...new Set([...issuedByPeriod.keys(), ...revokedByPeriod.keys()])].sort().map((period) => ({
+    period,
+    issued: issuedByPeriod.get(period) || 0,
+    revoked: revokedByPeriod.get(period) || 0,
   }));
 
   return (

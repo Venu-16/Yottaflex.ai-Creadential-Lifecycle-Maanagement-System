@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from uuid import UUID, uuid4
 
@@ -29,9 +29,30 @@ from app.models.domain import (
 from app.services.audit import record_event
 
 
+# Allowance for a client clock that runs slightly ahead of the server clock. The
+# eligibility evaluator and issuance apply no allowance: a completion counts only
+# once the server clock has reached its completed_at value.
+FUTURE_TIMESTAMP_TOLERANCE = timedelta(minutes=5)
+
+
 def _require_aware(value: datetime | None, field_name: str) -> None:
     if value is not None and (value.tzinfo is None or value.utcoffset() is None):
         raise ServiceError(422, f"{field_name} must include a timezone.")
+
+
+def _require_not_future(value: datetime | None, field_name: str) -> None:
+    """Reject a timestamp that lies in the future. Call after _require_aware."""
+    if value is not None and value > datetime.now(timezone.utc) + FUTURE_TIMESTAMP_TOLERANCE:
+        raise ServiceError(422, f"{field_name} cannot be in the future.")
+
+
+def _require_enforceable_criteria(criteria: dict) -> None:
+    """Reject a rule that requires neither course completion nor a minimum score."""
+    if criteria.get("requires_completion", True) is False and criteria.get("minimum_score") is None:
+        raise ServiceError(
+            422,
+            "A credential rule must require course completion, a minimum score, or both.",
+        )
 
 
 def create_learner(
@@ -293,6 +314,7 @@ def create_rule(
         raise ServiceError(422, "Rule criteria contain unsupported fields.")
     if not isinstance(criteria.get("requires_completion", True), bool):
         raise ServiceError(422, "requires_completion must be boolean.")
+    _require_enforceable_criteria(criteria)
     threshold = criteria.get("minimum_score")
     if threshold is not None:
         try:
@@ -379,6 +401,7 @@ def create_rule_version(
         raise ServiceError(422, "Rule criteria contain unsupported fields.")
     if not isinstance(criteria.get("requires_completion", True), bool):
         raise ServiceError(422, "requires_completion must be boolean.")
+    _require_enforceable_criteria(criteria)
     threshold = criteria.get("minimum_score")
     if threshold is not None:
         try:
@@ -507,6 +530,7 @@ def create_completion(
         raise ServiceError(422, "Completion status is invalid.")
     _require_aware(started_at, "started_at")
     _require_aware(completed_at, "completed_at")
+    _require_not_future(completed_at, "completed_at")
     if status == "completed" and completed_at is None:
         raise ServiceError(422, "completed_at is required for completed records.")
     if status != "completed" and completed_at is not None:
@@ -539,6 +563,7 @@ def update_completion_status(
     if status not in {"in_progress", "completed", "incomplete", "failed"}:
         raise ServiceError(422, "Completion status is invalid.")
     _require_aware(completed_at, "completed_at")
+    _require_not_future(completed_at, "completed_at")
     if status == "completed" and completed_at is None:
         raise ServiceError(422, "completed_at is required for completed records.")
     if status != "completed" and completed_at is not None:
@@ -579,10 +604,10 @@ def create_assessment_attempt(
         raise ServiceError(422, "Assessment attempt status is invalid.")
     if status == "graded" and (score is None or graded_at is None):
         raise ServiceError(422, "Graded attempts require score and graded_at.")
-    if graded_at and graded_at < submitted_at:
-        raise ServiceError(422, "graded_at cannot precede submitted_at.")
     _require_aware(submitted_at, "submitted_at")
     _require_aware(graded_at, "graded_at")
+    if graded_at and graded_at < submitted_at:
+        raise ServiceError(422, "graded_at cannot precede submitted_at.")
     if supersedes_attempt_id is not None:
         prior = db.get(AssessmentAttempt, supersedes_attempt_id)
         if prior is None or prior.completion_record_id != completion.id:

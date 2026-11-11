@@ -193,7 +193,15 @@ def issue_credential(
         evaluator_user_id=actor_id,
         evaluator_reference=actor_reference,
     )
-    if decision.outcome != "eligible":
+    # Issuance preconditions. A credential certifies a completed course, so in
+    # addition to an eligible decision the evidence must contain a completion dated
+    # on or before the evaluation time. This holds for score-only rules as well.
+    completed_at = _completion_evidence_time(decision.evidence_snapshot)
+    if decision.outcome == "eligible" and (
+        completed_at is None or completed_at > decision.evaluated_at
+    ):
+        reasons = ["COMPLETION_REQUIRED_BEFORE_ISSUANCE"]
+    if decision.outcome != "eligible" or reasons:
         idem.state = "failed"
         record_event(
             db,
@@ -243,6 +251,10 @@ def issue_credential(
         )
 
     issued_at = datetime.now(timezone.utc)
+    if completed_at > issued_at:
+        # Unreachable while the server clock moves forward; kept so that a signed
+        # payload can never state an issue time earlier than its completion time.
+        raise ServiceError(409, "Credential cannot be issued before course completion.")
     credential_id = _allocate_credential_id(db, issued_at)
     snapshot = decision.evidence_snapshot
     payload: dict[str, Any] = {
@@ -303,6 +315,37 @@ def issue_credential(
     )
     db.flush()
     return credential
+
+
+# Width of credentials.credential_id and verification_requests.submitted_credential_id.
+_CREDENTIAL_ID_MAX_LENGTH = 15
+
+
+def _registry_lookup_id(value: Any) -> str | None:
+    """Return a claimed credential ID only if the registry could hold such a value."""
+    if (
+        isinstance(value, str)
+        and len(value) <= _CREDENTIAL_ID_MAX_LENGTH
+        and "\x00" not in value
+    ):
+        return value
+    return None
+
+
+def _completion_evidence_time(snapshot: dict[str, Any] | None) -> datetime | None:
+    """Return the completed_at time of the completion evidence in a decision snapshot."""
+    for item in (snapshot or {}).get("evidence", []):
+        if (
+            isinstance(item, dict)
+            and "completion_record_id" in item
+            and item.get("status") == "completed"
+            and isinstance(item.get("completed_at"), str)
+        ):
+            try:
+                return _as_utc(datetime.fromisoformat(item["completed_at"]))
+            except ValueError:
+                return None
+    return None
 
 
 def _course_code_for_scope(db: Session, scope_id: UUID) -> str:
@@ -409,6 +452,8 @@ def _resolve_key(
         or not issuer_code
         or not isinstance(key_id, str)
         or not key_id
+        or "\x00" in issuer_code
+        or "\x00" in key_id
     ):
         return None, None
     row = db.execute(
@@ -553,7 +598,9 @@ def verify_portable_payload(
     except (RecursionError, TypeError, ValueError) as exc:
         raise ServiceError(422, "Portable credential payload must contain valid JSON values.") from exc
     digest = hashlib.sha256(encoded).digest()
-    credential_id = payload.get("credential_id")
+    # The payload is untrusted. A claimed ID that cannot exist in the registry is
+    # treated as absent, so it is neither looked up nor stored.
+    credential_id = _registry_lookup_id(payload.get("credential_id"))
     issuer_claim = payload.get("issuer")
     issuer_code = (
         issuer_claim.get("issuer_code")
@@ -572,7 +619,7 @@ def verify_portable_payload(
             integrity = "invalid_signature"
     credential = (
         db.scalar(select(Credential).where(Credential.credential_id == credential_id))
-        if isinstance(credential_id, str)
+        if credential_id is not None
         else None
     )
     if credential is not None and credential.canonical_payload != encoded:
@@ -603,7 +650,7 @@ def verify_portable_payload(
     verification_id = _verification_record(
         db,
         mode="portable_payload",
-        submitted_id=credential_id if isinstance(credential_id, str) else None,
+        submitted_id=credential_id,
         credential=credential,
         issuer=issuer,
         key=key,
@@ -621,7 +668,7 @@ def verify_portable_payload(
         "integrity_result": integrity,
         "issuer_trust_result": trust,
         "lifecycle_result": lifecycle,
-        "credential_id": credential_id if isinstance(credential_id, str) else None,
+        "credential_id": credential_id,
         "issuer_code": issuer_code if isinstance(issuer_code, str) else None,
         "message": _verification_message(overall),
     }

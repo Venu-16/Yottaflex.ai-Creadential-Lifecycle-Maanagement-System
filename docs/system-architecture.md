@@ -1,4 +1,4 @@
-# System Architecture Proposal — Phase 2
+# System Architecture 
 
 > **Note added in Phase 12.** This is the approved design baseline, written before implementation. It describes intent. For the behaviour of the code as it is now, see [credential-lifecycle.md](credential-lifecycle.md), [api-documentation.md](api-documentation.md), [database/database-schema.md](database/database-schema.md) and [security.md](security.md).
 

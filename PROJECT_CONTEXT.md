@@ -125,7 +125,8 @@ This describes the scaffold, not a finalized domain architecture. No database sc
 │   ├── data-dictionary.md
 │   ├── database-design.md
 │   ├── development-progress.md
-│   └── original-problem-statement.md
+│   ├── original-problem-statement.md
+│   └── system-architecture.md
 └── frontend/
     ├── .dockerignore
     ├── .env.example
@@ -203,7 +204,7 @@ These are initialization checks, not tests of business workflows or database sch
 - Alembic has no revisions and the metadata has no domain tables.
 - No local `.env` values are committed. Copy the relevant `.env.example` and supply local secrets before running the stack.
 - Initial setup used Python 3.13.2, Node.js 22.12.0, npm 11.0.0, and Docker Compose 5.0.0-desktop.1. Other environments may differ.
-- Git reported no commits on `main` and no available `origin/main`; scaffold files were untracked at inspection. Do not assume changes are committed.
+- The scaffold and initial documentation baseline are committed on `main` as `f0b335b22fe9396f5affe5bebca3c76276afce0b`. The configured `origin/main` is unavailable. Check current Git status before assuming subsequent documentation or implementation work is committed.
 - `AI_HANDOVER.md`, `docs/DECISIONS.md`, and `docs/original-problem-statement.md` were absent at first handover inspection; this documentation task creates them.
 
 ## Requirements, decisions, and unresolved questions
@@ -215,7 +216,13 @@ These are initialization checks, not tests of business workflows or database sch
 
 ## Development roadmap
 
-The authoritative 11-phase checklist and phase exit conditions are in [docs/development-progress.md](docs/development-progress.md). Phase 1 is the only completed phase; Phases 2–11 remain pending. The roadmap must continue to account for every original acceptance criterion, including synthetic-data generation and reproducibility.
+The authoritative 11-phase checklist and phase exit conditions are in [docs/development-progress.md](docs/development-progress.md). Phase 1 is the only completed phase. Phase 2 (system architecture design) is **IN REVIEW**, not completed; Phases 3–11 remain pending. The roadmap must continue to account for every original acceptance criterion, including synthetic-data generation and reproducibility.
+
+## Phase 2 architecture proposal
+
+[docs/system-architecture.md](docs/system-architecture.md) documents a recommended modular-monolith design, responsibilities and dependencies, nine core workflows, proposed lifecycle states, security guidance, representative versioned REST API groups, anomaly controls, audit/traceability, Mermaid diagrams, and risks/trade-offs. This is a design proposal only: no code, endpoints, database schema, dependencies, keys, or infrastructure were added for it.
+
+The recommendations and business choices are **pending user approval** and are separately listed in [docs/DECISIONS.md](docs/DECISIONS.md). No user decision is inferred. The existing required stack aligns with the scaffold; cryptographic algorithm and key trust, authentication/account model, actor permission matrix, verification disclosure, issuance authority, and lifecycle semantics remain unsettled.
 
 ## Continuation instructions
 

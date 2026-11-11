@@ -75,3 +75,50 @@ Add decisions below only after explicit approval. Include date, decision, ration
 | Date | ID | Decision | Status | Rationale / trade-off |
 |---|---|---|---|---|
 | — | — | No approved project-specific decision recorded. | — | — |
+
+## Phase 2 architecture proposal register — pending approval
+
+The proposal is documented in [system-architecture.md](system-architecture.md). Each recommendation remains **PENDING USER APPROVAL** and is not an approved decision. The architecture document describes options, consequences, recommendations, component boundaries, workflows, API groups, lifecycle, security, audit, risks, and diagrams. No recommendation authorizes implementation by itself.
+
+The stipulated external identifier formats `LRN-000001` and `CRD-2026-000001` are requirements to preserve, not pending decisions. ARCH-30 tracks only their unresolved year/sequence allocation, padding/overflow, and other entity-format details.
+
+| ID | Topic | Status |
+|---|---|---|
+| ARCH-00 | Architecture/deployment style: modular monolith versus microservices | **PENDING USER APPROVAL** |
+| ARCH-01 | Credential scope: individual course, program, or both | **PENDING USER APPROVAL** |
+| ARCH-02 | Eligibility policy: fixed thresholds, configurable versioned rules, or hybrid | **PENDING USER APPROVAL** |
+| ARCH-03 | Assessment attempt selection: latest, highest, any passing, or configurable | **PENDING USER APPROVAL** |
+| ARCH-04 | Issuance authority: administrator, dual approval, or automated approval | **PENDING USER APPROVAL** |
+| ARCH-05 | Verification disclosure: authenticity/status, issuer/course details, or learner-consented details | **PENDING USER APPROVAL** |
+| ARCH-06 | Revocation: permanent, reinstatement, or replacement credential | **PENDING USER APPROVAL** |
+| ARCH-07 | Cryptographic approach: SHA-256 only, signature plus SHA-256, or blockchain anchoring | **PENDING USER APPROVAL** |
+| ARCH-08 | Authentication: predefined demo accounts, admin-provisioned demo users, or full registration/management | **PENDING USER APPROVAL** |
+| ARCH-09 | Actor permission matrix and object-level scope for all six actors | **PENDING USER APPROVAL** |
+| ARCH-10 | Learner identity fields, PII, privacy and retention; preserve stipulated `LRN-000001` format | **PENDING USER APPROVAL** |
+| ARCH-11 | Issuer ownership, multiplicity, change history, and key attribution | **PENDING USER APPROVAL** |
+| ARCH-12 | Enrollment need, relationship cardinalities, effective dates, and delete/update policy | **PENDING USER APPROVAL** |
+| ARCH-13 | Rule versions, overlapping applicability, retroactivity, and effective dates | **PENDING USER APPROVAL** |
+| ARCH-14 | CompletionRecord versus AssessmentAttempt history, statuses, scales, thresholds, missing results, and corrections | **PENDING USER APPROVAL** |
+| ARCH-15 | Evaluation trigger, evidence snapshot/freshness, expiry, supersession, and re-evaluation | **PENDING USER APPROVAL** |
+| ARCH-16 | Preserve `CRD-2026-000001`; decide allocation semantics, learner/scope uniqueness, retry/idempotency behavior, and replacement handling | **PENDING USER APPROVAL** |
+| ARCH-17 | Signature algorithm/library, canonical payload, issuer-to-key trust registry, key custody/rotation, and trust bootstrap | **PENDING USER APPROVAL** |
+| ARCH-18 | Separate credential-ID and portable-payload verification modes, authentication, disclosure, retention, unknown-ID behavior, and rate limits | **PENDING USER APPROVAL** |
+| ARCH-19 | Revocation authority, reason, effective time, future dating, and reinstatement/replacement semantics | **PENDING USER APPROVAL** |
+| ARCH-20 | Audit immutability threat model, retention, access, clock, and tamper evidence | **PENDING USER APPROVAL** |
+| ARCH-21 | Failed/denied operation logging and behavior when audit persistence is unavailable | **PENDING USER APPROVAL** |
+| ARCH-22 | API error envelope, pagination, idempotency, and status-code contract | **PENDING USER APPROVAL** |
+| ARCH-23 | Synthetic data formats, starter/full profiles, and output layout | **PENDING USER APPROVAL** |
+| ARCH-24 | Anomaly fixture isolation and regression/mutant demonstration approach | **PENDING USER APPROVAL** |
+| ARCH-25 | Validation report, source manifest, checksum scope, and reproducibility report schemas | **PENDING USER APPROVAL** |
+| ARCH-26 | External data provenance or synthetic-only source policy | **PENDING USER APPROVAL** |
+| ARCH-27 | Deployment security operations: TLS, gateway, secrets, backups, monitoring, recovery | **PENDING USER APPROVAL** |
+| ARCH-28 | Password-hashing algorithm, JWT claims/expiry/revocation, and browser token transport/CSRF controls | **PENDING USER APPROVAL** |
+| ARCH-29 | Rate-limit mechanism, thresholds, request sizes, and public verification enumeration policy | **PENDING USER APPROVAL** |
+| ARCH-30 | Preserve stipulated `LRN-000001` and `CRD-2026-000001` formats; confirm only year/sequence allocation, padding/overflow, and other entity formats | **PENDING USER APPROVAL** |
+| ARCH-31 | Separate course-level CompletionRecord from per-attempt history and choose configurable attempt-selection behavior | **PENDING USER APPROVAL** |
+| ARCH-32 | Issuer-to-public-key trust registry, bootstrap, key validity, rotation, historical retention, and compromise policy | **PENDING USER APPROVAL** |
+| ARCH-33 | Credential-ID lookup versus portable signed-payload verification guarantees and response contract | **PENDING USER APPROVAL** |
+| ARCH-34 | Unavailable/expired/retired/compromised key handling, independently trusted historical timestamp evidence, and unavailable revocation status | **PENDING USER APPROVAL** |
+| ARCH-35 | Learner/credential-scope issuance uniqueness independent of decision snapshots, CRD allocation, idempotency, and separately authorized replacement/reissue | **PENDING USER APPROVAL** |
+
+The options, consequences, and recommendations for these decisions are described in Sections 1, 3, 5, 6, and 11 of `system-architecture.md`. The eight minimum business decisions (ARCH-01 through ARCH-08) have explicit option comparisons there; ARCH-00 documents the architecture-style trade-off. Recommendations must not be copied into an approved-decision record until the user explicitly accepts them; record approval date, decision, rationale/trade-off, and approval source.

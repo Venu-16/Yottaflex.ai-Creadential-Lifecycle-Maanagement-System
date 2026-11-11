@@ -15,10 +15,10 @@ The original problem statement is the source of truth. Do not remove, weaken, si
 ## Handover snapshot
 
 - **Last completed product phase:** Phase 1 — project foundation and initialization.
-- **Current product phase:** Phase 2 — identity, authentication, and authorization; not started.
-- **Current task:** The documentation/handover system has been completed and reconciled with the repository. This documentation task does not constitute a product feature or advance the product phase.
+- **Current product phase:** Phase 2 — system architecture design, **IN REVIEW**. The proposal is documented but not approved or implemented.
+- **Current task:** Architecture design proposal is complete for user review. It does not change application functionality or complete Phase 2.
 - **Implementation state:** Scaffold only. No application behavior beyond health check and static landing page; no authentication, domain models, tables, generated migrations, credential lifecycle functionality, or synthetic data.
-- **Next step:** Do not start implementation without the user's approval. Once approved, resolve the relevant open questions in `docs/DECISIONS.md`, starting with actor permissions and identity/access requirements, then proceed incrementally through the roadmap.
+- **Next step:** Wait for the user's review/approval of `docs/system-architecture.md` and the pending decisions in `docs/DECISIONS.md`. Record explicit decisions; do not implement a recommendation without approval. The immediate recommended decision topics are credential scope, eligibility/assessment semantics, issuance authority, verification disclosure, revocation semantics, cryptography/key trust, and authentication/actor permissions.
 
 ## Repository facts
 
@@ -29,7 +29,7 @@ The original problem statement is the source of truth. Do not remove, weaken, si
 - Data: `data/generated/`, `data/ground_truth/`, and `data/validation/` are empty placeholders.
 - Docker Compose defines `db`, `backend`, and `frontend`, uses a PostgreSQL health check and named volume. It has been built and tested locally.
 - Existing setup docs are in `README.md`; detailed context and actual tree are in `PROJECT_CONTEXT.md`.
-- The initial repository inspection showed no commits on `main`, no available `origin/main`, and all scaffold files untracked. Check git status before editing; do not assume there are no subsequent user changes.
+- Initial scaffold commit: `f0b335b22fe9396f5affe5bebca3c76276afce0b` (`chore: initialize credential lifecycle project and documentation`). The branch is `main`; the configured `origin/main` is unavailable. Check current Git status before editing; do not assume there are no subsequent user changes.
 
 ## Verified baseline and caveats
 
@@ -50,7 +50,7 @@ The prior environment used Python 3.13.2, Node 22.12.0, npm 11.0.0, and Docker C
 - Deliver seed data, schema, data dictionary, generator command, fixed-seed documentation, source manifest, validation summary, and reproducibility report.
 - Make eligible issuance, ineligible rejection, uniqueness, independent authenticity verification, revoked-status behavior, traceable operations, anomaly demonstration, required volumes, and reproducibility demonstrable end to end.
 
-The complete text and remaining original criteria are in [docs/original-problem-statement.md](docs/original-problem-statement.md).
+The complete text and remaining original criteria are in [docs/original-problem-statement.md](docs/original-problem-statement.md). Architecture options and their approval state are in [docs/system-architecture.md](docs/system-architecture.md) and [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Working rules for the next assistant
 
@@ -66,4 +66,4 @@ The complete text and remaining original criteria are in [docs/original-problem-
 
 ## Current approval boundary
 
-No follow-on product implementation is authorized by this handover. Wait for the user to approve the next task. The immediate recommended task is to clarify identity/access requirements and actor permissions before Phase 2 implementation; see the unresolved-question register.
+No application implementation is authorized by this handover. Phase 2 is **IN REVIEW**, not complete. Wait for the user to approve/revise the architecture and relevant decisions. Then update the approved-decision register and progress tracker; only begin an implementation task after explicit authorization. Do not mark Phase 2 complete merely because the proposal was written.
